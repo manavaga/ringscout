@@ -789,16 +789,21 @@
     let cityAreasMap = {};
     let discoveredShops = [];
     let activeQuestId = null;
+    let activeQuestToken = '';
     let activeEventSource = null;
     let pstnReady = false;
 
     const hashParams = new URLSearchParams((location.hash || '').replace(/^#/, ''));
-    let passcode = hashParams.get('passcode') || sessionStorage.getItem('rs_passcode') || '';
-    if (passcode) sessionStorage.setItem('rs_passcode', passcode);
+    let passcode = hashParams.get('passcode') || sessionStorage.getItem('ringscout_passcode') || sessionStorage.getItem('rs_passcode') || '';
+    if (passcode) {
+      sessionStorage.setItem('ringscout_passcode', passcode);
+      sessionStorage.setItem('rs_passcode', passcode);
+    }
 
-    function apiHeaders() {
+    function apiHeaders(includeQuestToken = false) {
       const h = { 'Content-Type': 'application/json' };
       if (passcode) h['X-RingScout-Passcode'] = passcode;
+      if (includeQuestToken && activeQuestToken) h['X-Quest-Token'] = activeQuestToken;
       return h;
     }
 
@@ -1230,6 +1235,7 @@
           return;
         }
         activeQuestId = data.quest.quest_id;
+        activeQuestToken = data.quest_token || '';
         renderCallsState(data.quest, data.ranked_quotes);
         document.getElementById('callsSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
         subscribeEvents(activeQuestId);
@@ -1243,12 +1249,15 @@
 
     function subscribeEvents(questId) {
       if (activeEventSource) activeEventSource.close();
-      const q = passcode ? `?passcode=${encodeURIComponent(passcode)}` : '';
-      const es = new EventSource(`/api/quests/${questId}/events${q}`);
+      const params = new URLSearchParams();
+      if (passcode) params.set('passcode', passcode);
+      if (activeQuestToken) params.set('token', activeQuestToken);
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      const es = new EventSource(`/api/quests/${questId}/events${qs}`);
       activeEventSource = es;
 
       const refresh = async () => {
-        const r = await fetch(`/api/quests/${questId}`, { headers: apiHeaders() });
+        const r = await fetch(`/api/quests/${questId}`, { headers: apiHeaders(true) });
         if (r.ok) {
           const d = await r.json();
           renderCallsState(d.quest, d.ranked_quotes);
@@ -1333,7 +1342,7 @@
     document.getElementById('startCallsBtn').addEventListener('click', handleStartCalls);
     document.getElementById('stopCallsBtn').addEventListener('click', async () => {
       if (!activeQuestId) return;
-      await fetch(`/api/quests/${activeQuestId}/stop`, { method: 'POST', headers: apiHeaders() });
+      await fetch(`/api/quests/${activeQuestId}/stop`, { method: 'POST', headers: apiHeaders(true) });
     });
 
     init();

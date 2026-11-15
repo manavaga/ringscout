@@ -356,16 +356,27 @@ class QuestSession(BaseModel):
     created_at_epoch: float = Field(default_factory=time.time)
 
     def ranked_quotes(self) -> list[ShopCallState]:
-        """Return calls sorted: in-stock lowest ₹ first, then in-stock unknown ₹, then out-of-stock/other."""
+        """Return calls sorted: connected in-stock lowest ₹ first, then connected in-stock, connected out-of-stock, then unanswered/skipped."""
 
         def sort_key(call: ShopCallState) -> tuple[int, float, float]:
             q = call.quote
-            if q and q.in_stock is True and q.price_inr is not None:
+            connected_ok = call.status not in (
+                CallStatus.SKIPPED,
+                CallStatus.FAILED,
+                CallStatus.STOPPED,
+            ) and call.outcome not in (
+                CallOutcome.BUSY_NO_ANSWER,
+                CallOutcome.VOICEMAIL_SKIPPED,
+                CallOutcome.ERROR,
+            )
+            if connected_ok and q and q.in_stock is True and q.price_inr is not None:
                 return (0, q.price_inr, -(call.shop.rating or 0.0))
-            if q and q.in_stock is True:
+            if connected_ok and q and q.in_stock is True:
                 return (1, float("inf"), -(call.shop.rating or 0.0))
-            if q and q.in_stock is False:
+            if connected_ok and q and q.in_stock is False:
                 return (2, float("inf"), -(call.shop.rating or 0.0))
-            return (3, float("inf"), -(call.shop.rating or 0.0))
+            if connected_ok:
+                return (3, float("inf"), -(call.shop.rating or 0.0))
+            return (4, float("inf"), -(call.shop.rating or 0.0))
 
         return sorted(self.calls.values(), key=sort_key)

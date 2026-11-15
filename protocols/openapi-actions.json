@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "RingScout \u2014 Real-Time Google Maps Voice Insights API",
-    "version": "2.0.0",
-    "description": "Calls real open hotels, restaurants, clinics, MRI centers, petrol pumps, salons, auto shops, or pharmacies found on Google Maps in parallel (Indian English & Hindi) to verify live room/table/slot availability, wait times, \u20b9 tariffs/prices, and custom answers with playable .wav audio proof."
+    "version": "3.0.0",
+    "description": "Calls real open spas, salons, hotels, restaurants, clinics, MRI centers, petrol pumps, auto shops, or pharmacies found on Google Maps in parallel (Indian English & Hindi) to verify live room/table/slot availability, wait times, \u20b9 tariffs/prices, and custom answers with playable .wav audio proof."
   },
   "servers": [
     {
@@ -31,11 +31,12 @@
                     "enum": [
                       "hotel",
                       "restaurant",
+                      "spa",
+                      "salon",
                       "clinic",
                       "diagnostics",
                       "petrol",
                       "auto",
-                      "salon",
                       "pharmacy",
                       "custom"
                     ],

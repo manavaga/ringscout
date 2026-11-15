@@ -40,11 +40,32 @@ else
   echo "⚠️  ${CARRIER_JSON} not found; using existing Secret Manager values if already created."
 fi
 
-ADMIN_PASS="${RINGSCOUT_ADMIN_PASSCODE:-$(python3 -c 'import secrets; print(secrets.token_urlsafe(14))')}"
-HMAC_KEY="${RINGSCOUT_HMAC_SECRET:-$(python3 -c 'import secrets; print(secrets.token_hex(32))')}"
+ensure_secret_preserving_existing() {
+  local secret_name="$1"
+  local explicit_val="$2"
+  local fallback_gen_cmd="$3"
 
-upsert_secret "ringscout-admin-passcode" "${ADMIN_PASS}"
-upsert_secret "ringscout-hmac-secret" "${HMAC_KEY}"
+  if [[ -n "${explicit_val}" ]]; then
+    upsert_secret "${secret_name}" "${explicit_val}"
+    return 0
+  fi
+
+  if gcloud secrets describe "${secret_name}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
+    local existing_ver
+    existing_ver="$(gcloud secrets versions list "${secret_name}" --project="${PROJECT_ID}" --filter='state=ENABLED' --limit=1 --format='value(name)' 2>/dev/null || true)"
+    if [[ -n "${existing_ver}" ]]; then
+      echo "  ✓ Keeping existing enabled Secret Manager secret: ${secret_name} (v${existing_ver})"
+      return 0
+    fi
+  fi
+
+  local generated_val
+  generated_val="$(eval "${fallback_gen_cmd}")"
+  upsert_secret "${secret_name}" "${generated_val}"
+}
+
+ensure_secret_preserving_existing "ringscout-admin-passcode" "${RINGSCOUT_ADMIN_PASSCODE:-}" "python3 -c 'import secrets; print(secrets.token_urlsafe(14))'"
+ensure_secret_preserving_existing "ringscout-hmac-secret" "${RINGSCOUT_HMAC_SECRET:-}" "python3 -c 'import secrets; print(secrets.token_hex(32))'"
 
 if [[ -n "${STRIPE_SECRET_KEY:-}" ]]; then
   upsert_secret "ringscout-stripe-secret-key" "${STRIPE_SECRET_KEY}"

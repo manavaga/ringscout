@@ -1860,9 +1860,42 @@ def test_spa_vs_salon_specific_place_dashboard_and_zero_repo_secrets(
     assert is_relevant_for_query({"name": "Four Fountains De-Stress Spa", "category": "Day spa"}, spa_q) is True
     assert is_relevant_for_query({"name": "Cut Da Crap Unisex Salon", "category": "Hair salon"}, spa_q, specific_place="Cut Da Crap") is True
 
-    # 2. Public consumer access (zero passcode when RINGSCOUT_ADMIN_PASSCODE is used instead of RINGSCOUT_PASSCODE)
+    # 2. Fail-Closed Admin Auth when RINGSCOUT_PUBLIC_CONSUMER_ACCESS=1 and no passcode set
     monkeypatch.delenv("RINGSCOUT_PASSCODE", raising=False)
+    monkeypatch.delenv("RINGSCOUT_ADMIN_PASSCODE", raising=False)
+    monkeypatch.setenv("RINGSCOUT_PUBLIC_CONSUMER_ACCESS", "1")
+    fail_closed_client = TestClient(create_app(synthesize_audio=False, require_provenance=True))
+    assert fail_closed_client.get("/api/pstn/config").status_code == 401
+
+    # 3. Public consumer access with RINGSCOUT_ADMIN_PASSCODE set
     monkeypatch.setenv("RINGSCOUT_ADMIN_PASSCODE", "admin-vault-999")
+
+    async def fake_maps_lookup(req: Any) -> DiscoverResponse:
+        return DiscoverResponse(
+            query=req.purpose or req.specific_place or "spa",
+            place_category=req.place_category,
+            city=req.city,
+            locality=req.locality,
+            source="vertex_google_maps_grounding",
+            shops=[
+                IndianShopTarget(
+                    shop_id="shop_spa_1",
+                    name="Dream Spa Bandra",
+                    phone_e164="+919892025216",
+                    phone_display="+91 98920 25216",
+                    address="Waterfield Road, Bandra West, Mumbai 400050",
+                    locality="Bandra West",
+                    city="Mumbai",
+                    open_status="OPEN NOW",
+                    is_open_now=True,
+                    rating=4.9,
+                    category="Day spa",
+                )
+            ],
+        )
+
+    import ringscout.server as _srv_mod
+    monkeypatch.setattr(_srv_mod, "discover_indian_shops", fake_maps_lookup)
 
     app = create_app(synthesize_audio=False, require_provenance=True)
     client = TestClient(app)
@@ -1871,37 +1904,133 @@ def test_spa_vs_salon_specific_place_dashboard_and_zero_repo_secrets(
     assert client.get("/api/pstn/config").status_code == 401
     assert client.get("/api/pstn/config", headers={"X-RingScout-Passcode": "admin-vault-999"}).status_code == 200
 
-    # Consumer + Add Specific Place works with ZERO passcode!
-    add_ok = client.post(
+    # Consumer + Add Specific Place by Google Maps name works with ZERO passcode!
+    add_by_name = client.post(
         "/api/places/add",
         json={
-            "place_name": "Jean-Claude Biguine Salon & Spa",
+            "place_name": "Dream Spa Bandra",
+            "city": "Mumbai",
+            "locality": "Bandra West",
+            "place_category": "spa",
+        },
+    )
+    assert add_by_name.status_code == 200
+    assert add_by_name.json()["shops"][0]["phone_e164"] == "+919892025216"
+
+    # P0 Guard: Unauthenticated consumer CANNOT inject an unlisted personal +91 mobile number!
+    unlisted_anon = client.post(
+        "/api/places/add",
+        json={
+            "place_name": "Random Person",
+            "phone": "+91 98111 22334",
+            "city": "Mumbai",
+            "locality": "Bandra West",
+            "place_category": "salon",
+        },
+    )
+    assert unlisted_anon.status_code == 403
+    assert "+919811122334" not in app.state.manager.verified_google_phones
+
+    # Admin CAN add a known unlisted business +91 number
+    add_admin = client.post(
+        "/api/places/add",
+        headers={"X-RingScout-Passcode": "admin-vault-999"},
+        json={
+            "place_name": "Jean-Claude Biguine Salon",
             "phone": "+91 22 6522 1100",
             "city": "Mumbai",
             "locality": "Bandra West",
             "place_category": "salon",
         },
     )
-    assert add_ok.status_code == 200
-    added_shop = add_ok.json()["shops"][0]
-    assert added_shop["phone_e164"] == "+912265221100"
+    assert add_admin.status_code == 200
+    assert add_admin.json()["shops"][0]["phone_e164"] == "+912265221100"
 
-    # Toll-free 1800 numbers are still blocked on manual add
+    # Toll-free 1800 numbers are still blocked even for Admin
     bad_toll = client.post(
         "/api/places/add",
+        headers={"X-RingScout-Passcode": "admin-vault-999"},
         json={"place_name": "Call Center", "phone": "1800-102-4455", "city": "Mumbai", "locality": "Bandra West"},
     )
     assert bad_toll.status_code == 400
 
-    # 3. Live Dashboard & Official MCP Registry server.json endpoints
+    # 4. Quest ownership token (X-Quest-Token) & Dashboard privacy masking
+    q_create = client.post(
+        "/api/quests",
+        json={
+            "user_goal": "60-minute deep tissue massage slot today at 7 PM and price in ₹",
+            "place_category": "spa",
+            "city": "Mumbai",
+            "locality": "Bandra West",
+            "mode": "hinglish_swarm",
+            "shops": add_by_name.json()["shops"],
+        },
+    )
+    assert q_create.status_code == 200
+    q_id = q_create.json()["quest"]["quest_id"]
+    q_tok = q_create.json()["quest_token"]
+    assert q_tok
+
+    # Anonymous viewer without X-Quest-Token gets masked phones and CANNOT stop someone else's quest
+    anon_get = client.get(f"/api/quests/{q_id}").json()
+    assert anon_get["quest"]["shops"][0]["phone_e164"] == ""
+    assert "•" in anon_get["quest"]["shops"][0]["phone_display"]
+    assert client.post(f"/api/quests/{q_id}/stop").status_code == 403
+
+    # Quest owner WITH X-Quest-Token gets full details and CAN stop their quest
+    owner_get = client.get(f"/api/quests/{q_id}", headers={"X-Quest-Token": q_tok}).json()
+    assert owner_get["quest"]["shops"][0]["phone_e164"] == "+919892025216"
+    assert client.post(f"/api/quests/{q_id}/stop", headers={"X-Quest-Token": q_tok}).status_code == 200
+
+    # 5. Live Dashboard & Official MCP Registry server.json endpoints + Connected-First Ranking & Dual-Price Extraction
     dash_html = client.get("/dashboard")
     assert dash_html.status_code == 200
     dash_api = client.get("/api/dashboard/summary")
     assert dash_api.status_code == 200
     assert len(dash_api.json()["mcp_directories"]) >= 8
+    assert dash_api.json()["quests"][0]["quest_id"].startswith("q_••••")
     srv_json = client.get("/server.json")
     assert srv_json.status_code == 200
     assert srv_json.json()["remotes"][0]["type"] == "streamable-http"
+
+    from ringscout.voice_engine import extract_hinglish_inr_amount
+    assert extract_hinglish_inr_amount("For Thai dry is 1,900 and for deep tissue is 2,700.") == 1900.0
+
+    from ringscout.models import InrQuote, QuestSession, ShopCallState, VocalTone
+    s_skip = IndianShopTarget(
+        shop_id="s_skip", name="Skipped Spa", phone_e164="+919892025216", phone_display="+91 98920 25216", address="Bandra"
+    )
+    s_conn = IndianShopTarget(
+        shop_id="s_conn", name="Connected Spa", phone_e164="+918291652759", phone_display="+91 82916 52759", address="Bandra"
+    )
+    qs_rank = QuestSession(
+        quest_id="q_rank",
+        user_goal="Spa slot",
+        city="Mumbai",
+        locality="Bandra",
+        preferred_tone=VocalTone.POLITE_INDIAN_ENGLISH,
+        mode=CallMode.LIVE_PSTN,
+        shops=[s_skip, s_conn],
+        calls={
+            "s_skip": ShopCallState(
+                shop=s_skip,
+                mode=CallMode.LIVE_PSTN,
+                status=CallStatus.SKIPPED,
+                outcome=CallOutcome.BUSY_NO_ANSWER,
+                vocal_tone=VocalTone.POLITE_INDIAN_ENGLISH,
+                quote=InrQuote(in_stock=True, price_inr=1500.0),
+            ),
+            "s_conn": ShopCallState(
+                shop=s_conn,
+                mode=CallMode.LIVE_PSTN,
+                status=CallStatus.COMPLETED,
+                outcome=CallOutcome.CONNECTED_QUOTE,
+                vocal_tone=VocalTone.POLITE_INDIAN_ENGLISH,
+                quote=InrQuote(in_stock=True, price_inr=1900.0),
+            ),
+        },
+    )
+    assert qs_rank.ranked_quotes()[0].shop.name == "Connected Spa"
 
     # 4. Automated Secret-Leak Guard across repository files
     import re as _re

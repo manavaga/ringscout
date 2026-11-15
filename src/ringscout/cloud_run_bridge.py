@@ -35,6 +35,7 @@ from ringscout.models import (
     QuestSession,
     TranscriptTurn,
 )
+from ringscout.secrets_manager import get_secret
 
 if TYPE_CHECKING:
     from ringscout.carriers import LiveIndiaPstnAdapter
@@ -63,8 +64,8 @@ def cloud_run_base_url() -> str:
 def _bridge_headers() -> dict[str, str]:
     hdrs = {"Content-Type": "application/json"}
     passcode = (
-        os.environ.get("RINGSCOUT_PASSCODE", "").strip()
-        or os.environ.get("RINGSCOUT_ADMIN_PASSCODE", "").strip()
+        get_secret("RINGSCOUT_ADMIN_PASSCODE")
+        or os.environ.get("RINGSCOUT_PASSCODE", "").strip()
     )
     if passcode:
         hdrs["X-RingScout-Passcode"] = passcode
@@ -226,24 +227,38 @@ async def relay_quest_via_cloud_run(
             }
             start_resp = await http.post(f"{base}/api/quests", headers=hdrs, json=quest_body)
 
-            # If Cloud Run autoscaled or cold-started, re-verify every selected Google Maps shop in parallel and retry
+            # If Cloud Run autoscaled or cold-started, re-verify every selected Google Maps / custom shop in parallel and retry
             if start_resp.status_code == 400 and "unverified" in start_resp.text.lower():
-                await asyncio.gather(
-                    *[
-                        http.post(
-                            f"{base}/api/discover",
-                            headers=hdrs,
-                            json={
-                                "query": f"{s.name} {s.locality or quest.locality}"[:180],
-                                "city": quest.city,
-                                "locality": quest.locality,
-                                "max_shops": 8,
-                            },
+                reverify_tasks = []
+                for s in quest.shops:
+                    if s.shop_id.startswith("custom_"):
+                        reverify_tasks.append(
+                            http.post(
+                                f"{base}/api/places/add",
+                                headers=hdrs,
+                                json={
+                                    "place_name": s.name,
+                                    "phone": s.phone_e164,
+                                    "city": s.city or quest.city,
+                                    "locality": s.locality or quest.locality,
+                                    "place_category": quest.place_category.value,
+                                },
+                            )
                         )
-                        for s in quest.shops
-                    ],
-                    return_exceptions=True,
-                )
+                    else:
+                        reverify_tasks.append(
+                            http.post(
+                                f"{base}/api/discover",
+                                headers=hdrs,
+                                json={
+                                    "query": f"{s.name} {s.locality or quest.locality}"[:180],
+                                    "city": quest.city,
+                                    "locality": quest.locality,
+                                    "max_shops": 8,
+                                },
+                            )
+                        )
+                await asyncio.gather(*reverify_tasks, return_exceptions=True)
                 start_resp = await http.post(f"{base}/api/quests", headers=hdrs, json=quest_body)
 
             if start_resp.status_code != 200:
@@ -269,7 +284,11 @@ async def relay_quest_via_cloud_run(
                     return True
                 return False
 
-            remote_qid = start_resp.json()["quest"]["quest_id"]
+            start_json = start_resp.json()
+            remote_qid = start_json["quest"]["quest_id"]
+            poll_hdrs = dict(hdrs)
+            if start_json.get("quest_token"):
+                poll_hdrs["X-Quest-Token"] = str(start_json["quest_token"])
             fetched_audio: set[str] = set()
             cdr_terminal_sids: set[str] = set()
             ring_started_at: dict[str, float] = {}
@@ -280,11 +299,11 @@ async def relay_quest_via_cloud_run(
 
             while time.monotonic() < deadline:
                 if stop_event.is_set():
-                    await http.post(f"{base}/api/quests/{remote_qid}/stop", headers=hdrs)
+                    await http.post(f"{base}/api/quests/{remote_qid}/stop", headers=poll_hdrs)
                     return True
 
                 await asyncio.sleep(0.85)
-                poll = await http.get(f"{base}/api/quests/{remote_qid}", headers=hdrs)
+                poll = await http.get(f"{base}/api/quests/{remote_qid}", headers=poll_hdrs)
                 if poll.status_code != 200:
                     continue
                 r_quest = poll.json().get("quest") or {}
@@ -332,16 +351,24 @@ async def relay_quest_via_cloud_run(
                     if rc.get("carrier_provider"):
                         local_call.carrier_provider = str(rc["carrier_provider"])
 
+                    remote_status_str = str(rc.get("status") or "")
+                    remote_turns = rc.get("transcript") or []
+                    remote_connected = remote_status_str in ("in_progress", "ivr_menu", "completed") or any(
+                        t.get("speaker") in ("shopkeeper", "agent") for t in remote_turns
+                    )
+                    if remote_connected:
+                        cdr_terminal_sids.discard(sid)
+
                     if sid not in cdr_terminal_sids:
                         local_call.status = CallStatus(rc.get("status", local_call.status.value))
                         local_call.outcome = CallOutcome(rc.get("outcome", local_call.outcome.value))
                         local_call.duration_sec = float(rc.get("duration_sec") or 0.0)
                         local_call.dtmf_sent = list(rc.get("dtmf_sent") or [])
                         local_call.transcript = [
-                            TranscriptTurn.model_validate(t) for t in (rc.get("transcript") or [])
+                            TranscriptTurn.model_validate(t) for t in remote_turns
                         ]
 
-                        if local_call.status == CallStatus.RINGING:
+                        if local_call.status == CallStatus.RINGING and local_call.twilio_call_sid:
                             ring_started_at.setdefault(sid, now_mono)
                             cuuid = local_call.twilio_call_sid or ""
                             cdr_item = vobiz_cdrs_by_uuid.get(cuuid)
@@ -350,6 +377,7 @@ async def relay_quest_via_cloud_run(
                                 cdr_terminal_sids.add(sid)
                                 local_call.status = CallStatus.SKIPPED
                                 local_call.outcome = CallOutcome.BUSY_NO_ANSWER
+                                local_call.quote = None
                                 local_call.transcript = [
                                     TranscriptTurn(
                                         speaker="system",
@@ -357,10 +385,11 @@ async def relay_quest_via_cloud_run(
                                         timestamp_sec=round(now_mono - ring_started_at[sid], 1),
                                     )
                                 ]
-                            elif (now_mono - ring_started_at[sid]) >= 31.0 and not local_call.transcript:
+                            elif (now_mono - ring_started_at[sid]) >= 45.0 and not local_call.transcript:
                                 cdr_terminal_sids.add(sid)
                                 local_call.status = CallStatus.SKIPPED
                                 local_call.outcome = CallOutcome.BUSY_NO_ANSWER
+                                local_call.quote = None
                                 local_call.transcript = [
                                     TranscriptTurn(
                                         speaker="system",
@@ -368,28 +397,52 @@ async def relay_quest_via_cloud_run(
                                         timestamp_sec=25.0,
                                     )
                                 ]
+
                     rq = rc.get("quote")
-                    if isinstance(rq, dict):
+                    call_answered_ok = local_call.status not in (
+                        CallStatus.SKIPPED,
+                        CallStatus.FAILED,
+                    ) and local_call.outcome not in (
+                        CallOutcome.BUSY_NO_ANSWER,
+                        CallOutcome.VOICEMAIL_SKIPPED,
+                        CallOutcome.ERROR,
+                    )
+                    if isinstance(rq, dict) and call_answered_ok:
                         in_st = rq.get("in_stock")
                         avail_lbl = rq.get("availability_label") or _default_availability_label(
                             quest.place_category, in_st
                         )
-                        notes_str = str(rq.get("notes") or "")
-                        insights = list(rq.get("key_insights") or [])
+                        notes_str = str(rq.get("notes") or "").replace("’1,", "₹1,").replace("’2,", "₹2,").replace("’3,", "₹3,")
+                        import re as _re_q
+                        notes_str = _re_q.sub(r"[’'](?=\d{1,2},\d{3}\b|\d{3,5}\b)", "₹", notes_str)
+                        insights = [
+                            _re_q.sub(r"[’'](?=\d{1,2},\d{3}\b|\d{3,5}\b)", "₹", str(x))
+                            for x in (rq.get("key_insights") or [])
+                        ]
                         if not insights and notes_str:
                             insights = [notes_str]
                         if rq.get("eta_or_slot") and rq["eta_or_slot"] not in " ".join(insights):
                             insights.append(f"Timing / Slot: {rq['eta_or_slot']}")
+                        p_inr = rq.get("price_inr")
+                        p_disp = rq.get("price_display")
+                        if p_inr is None and in_st is True and notes_str:
+                            from ringscout.voice_engine import extract_hinglish_inr_amount
+
+                            p_inr = extract_hinglish_inr_amount(notes_str)
+                            if p_inr is not None and not p_disp:
+                                p_disp = f"₹{int(p_inr):,}"
                         local_call.quote = InrQuote(
                             in_stock=in_st,
                             availability_label=avail_lbl,
-                            price_inr=rq.get("price_inr"),
-                            price_display=rq.get("price_display"),
+                            price_inr=p_inr,
+                            price_display=p_disp,
                             unit_or_pack=rq.get("unit_or_pack"),
                             eta_or_slot=rq.get("eta_or_slot"),
                             notes=notes_str,
                             key_insights=insights[:3],
                         )
+                    elif not call_answered_ok:
+                        local_call.quote = None
 
                     if rc.get("audio_url") and sid not in fetched_audio and local_call.status in terminal_states:
                         wav_r = await http.get(f"{base}{rc['audio_url']}", headers=hdrs)

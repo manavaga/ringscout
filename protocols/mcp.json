@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
   "name": "io.ringscout/google-maps-voice-scout",
   "title": "RingScout \u2014 Call Google Maps Places for Live Availability & Rates",
-  "description": "Remote Streamable HTTP MCP server that calls real open hotels, restaurants, clinics, MRI centers, petrol stations, salons, auto garages, and pharmacies on Google Maps in parallel (en-IN / hi-IN) and returns verified availability, \u20b9 prices, key insights, and .wav audio proof.",
-  "version": "2.0.0",
+  "description": "Remote Streamable HTTP MCP server that calls real open spas, salons, hotels, restaurants, clinics, MRI centers, petrol stations, auto garages, and pharmacies on Google Maps in parallel (en-IN / hi-IN) and returns verified availability, \u20b9 prices, key insights, and .wav audio proof.",
+  "version": "3.0.0",
   "websiteUrl": "https://ringscout-hom7ntreuq-uc.a.run.app",
   "remotes": [
     {

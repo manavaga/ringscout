@@ -365,7 +365,11 @@
     let currentFilter = 'all';
     let lastSummary = null;
     const hashParams = new URLSearchParams((location.hash || '').replace(/^#/, ''));
-    const passcode = hashParams.get('passcode') || sessionStorage.getItem('rs_passcode') || '';
+    const passcode = hashParams.get('passcode') || sessionStorage.getItem('ringscout_passcode') || sessionStorage.getItem('rs_passcode') || '';
+    if (passcode) {
+      sessionStorage.setItem('ringscout_passcode', passcode);
+      sessionStorage.setItem('rs_passcode', passcode);
+    }
 
     function originBadgeInfo(ch) {
       if (ch === 'mcp') return { cls: 'origin-mcp', label: 'MCP CONNECTOR' };

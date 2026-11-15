@@ -3,7 +3,7 @@
   "name": "RingScout \u2014 Real-Time Google Maps Voice Insights Agent",
   "description": "Calls real open hotels, restaurants, clinics, MRI/diagnostic centers, petrol pumps, salons, auto shops, or pharmacies found on Google Maps in parallel (en-IN / hi-IN) to verify live availability, wait times, tariffs/rates in \u20b9, and custom questions with 24kHz .wav audio proof.",
   "url": "https://ringscout-hom7ntreuq-uc.a.run.app/a2a",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "provider": {
     "organization": "RingScout",
     "url": "https://ringscout-hom7ntreuq-uc.a.run.app"
@@ -83,11 +83,12 @@
     "supportedCategories": [
       "hotel",
       "restaurant",
+      "spa",
+      "salon",
       "clinic",
       "diagnostics",
       "petrol",
       "auto",
-      "salon",
       "pharmacy",
       "custom"
     ],

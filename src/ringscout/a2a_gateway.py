@@ -653,7 +653,7 @@ def build_agent_card(base_url: str, live_pstn_ready: bool) -> dict[str, Any]:
             "tariffs/rates in ₹, and custom questions with 24kHz .wav audio proof."
         ),
         "url": f"{clean_base}/a2a",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "provider": {
             "organization": "RingScout",
             "url": clean_base,
@@ -1514,7 +1514,7 @@ async def handle_mcp_jsonrpc(
                 "capabilities": {"tools": {"listChanged": False}},
                 "serverInfo": {
                     "name": "ringscout-india-voice-oracle",
-                    "version": "2.0.0",
+                    "version": "3.0.0",
                 },
             },
         }
@@ -1672,7 +1672,7 @@ def build_openapi_actions_spec(base_url: str) -> dict[str, Any]:
         "openapi": "3.1.0",
         "info": {
             "title": "RingScout — Real-Time Google Maps Voice Insights API",
-            "version": "2.0.0",
+            "version": "3.0.0",
             "description": (
                 "Calls real open hotels, restaurants, clinics, MRI centers, petrol pumps, salons, auto shops, "
                 "or pharmacies found on Google Maps in parallel (Indian English & Hindi) to verify live room/table/slot "
@@ -1787,7 +1787,7 @@ def build_mcp_registry_manifest(base_url: str) -> dict[str, Any]:
             "petrol stations, salons, auto garages, and pharmacies on Google Maps in parallel (en-IN / hi-IN) "
             "and returns verified availability, ₹ prices, key insights, and .wav audio proof."
         ),
-        "version": "2.0.0",
+        "version": "3.0.0",
         "websiteUrl": clean,
         "remotes": [
             {

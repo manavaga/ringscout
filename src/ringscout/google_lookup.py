@@ -781,6 +781,28 @@ def _build_discovery_prompts(req: DiscoverRequest) -> tuple[str, str, str]:
         )
         return maps_leg1, maps_leg2, maps_leg2
 
+    if cat == PlaceCategory.SPA:
+        area_meta_spa = lookup_area_metadata(req.city, req.locality)
+        pin_hint_spa = (
+            f" (PIN {'/'.join(str(p) for p in area_meta_spa['pins'])}, {', '.join(area_meta_spa['aliases'][:3])})"
+            if area_meta_spa
+            else ""
+        )
+        maps_leg1 = (
+            f"Use Google Maps to find up to {target_n} real, currently OPEN day spas, body massage centers, "
+            f"and Thai / deep-tissue wellness spas strictly inside {req.locality}{pin_hint_spa}, {req.city}, India "
+            f"with direct +91 appointment numbers (exclude hair-only salons and barber shops).\n{json_spec}"
+        )
+        maps_leg2 = (
+            f"Use Google Maps to find up to 10 top-rated luxury spas, aromatherapy wellness centers, sauna spas, "
+            f"and foot reflexology centers in {req.locality}{pin_hint_spa}, {req.city}, India with local +91 reception numbers.\n{json_spec}"
+        )
+        maps_leg3 = (
+            f"Use Google Maps to find up to 10 popular Thai spas and Ayurvedic massage spas "
+            f"in and immediately adjacent to {req.locality}{pin_hint_spa}, {req.city}, India.\n{json_spec}"
+        )
+        return maps_leg1, maps_leg2, maps_leg3
+
     if cat == PlaceCategory.SALON:
         area_meta_s = lookup_area_metadata(req.city, req.locality)
         pin_hint = f" (PIN {'/'.join(str(p) for p in area_meta_s['pins'])}, {', '.join(area_meta_s['aliases'][:3])})" if area_meta_s else ""
@@ -789,7 +811,7 @@ def _build_discovery_prompts(req: DiscoverRequest) -> tuple[str, str, str]:
             f"and styling studios strictly inside {req.locality}{pin_hint}, {req.city}, India with direct +91 appointment numbers.\n{json_spec}"
         )
         maps_leg2 = (
-            f"Use Google Maps to find up to 10 top-rated day spas, grooming lounges, and hair couture salons "
+            f"Use Google Maps to find up to 10 top-rated hair couture salons, grooming lounges, and blow-dry studios "
             f"strictly in {req.locality}{pin_hint}, {req.city}, India with local +91 reception numbers.\n{json_spec}"
         )
         maps_leg3 = (
@@ -1021,9 +1043,15 @@ def _local_preview_fallback_places(
             ("Saifee Auto & Battery Point", "+91 22 2640 1988", f"Linking Road, {loc}, {cty} 400050", 4.4, "Auto Service & Battery"),
             ("Pal Tyre Service", "+91 98211 33490", f"Turner Road, {loc}, {cty} 400050", 4.6, "Authorised Tyre Dealer"),
         ],
+        PlaceCategory.SPA: [
+            ("Dream Spa Bandra", "+91 98920 25216", f"Waterfield Road, {loc}, {cty} 400050", 4.9, "Day Spa & Massage"),
+            ("Suzumi Wellness - Sauna & Spa", "+91 75060 09926", f"Waterfield Road, {loc}, {cty} 400050", 4.9, "Wellness & Sauna Spa"),
+            ("Sally's Day Spa", "+91 89764 90701", f"Pali Hill Road, {loc}, {cty} 400050", 4.8, "Day Spa"),
+            ("Four Fountains De-Stress Spa", "+91 22 6522 4488", f"Linking Road, {loc}, {cty} 400050", 4.6, "Body Massage Spa"),
+        ],
         PlaceCategory.SALON: [
             ("BBLUNT Salon Bandra", "+91 98204 82110", f"Pali Mala Road, {loc}, {cty} 400050", 4.6, "Hair & Beauty Salon"),
-            ("Jean-Claude Biguine Spa & Salon", "+91 22 6522 2211", f"Waterfield Road, {loc}, {cty} 400050", 4.5, "Salon & Spa"),
+            ("Jean-Claude Biguine Salon", "+91 22 6522 2211", f"Waterfield Road, {loc}, {cty} 400050", 4.5, "Hair Styling Salon"),
             ("Truefitt & Hill Bandra", "+91 98192 44010", f"Linking Road, {loc}, {cty} 400050", 4.7, "Grooming Lounge"),
         ],
         PlaceCategory.PHARMACY: [

@@ -282,7 +282,22 @@ def _infer_category_from_goal(
         return PlaceCategory.CLINIC
     if any(k in low for k in ("tyre", "tire", "alignment", "battery", "car service", "garage")):
         return PlaceCategory.AUTO
-    if any(k in low for k in ("salon", "spa", "haircut", "grooming", "massage")):
+    if any(
+        k in low
+        for k in (
+            "spa",
+            "massage",
+            "deep tissue",
+            "thai",
+            "reflexology",
+            "aromatherapy",
+            "sauna",
+            "jacuzzi",
+            "ayurvedic",
+        )
+    ) and not any(h in low for h in ("hair spa", "haircut", "blow-dry", "blow dry", "beard", "keratin")):
+        return PlaceCategory.SPA
+    if any(k in low for k in ("salon", "haircut", "grooming", "blow-dry", "blow dry", "beard", "keratin", "parlour")):
         return PlaceCategory.SALON
     if any(k in low for k in ("strip", "tablet", "medicine", "capsule", "pharmacy", "chemist", "augmentin", "istamet")):
         return PlaceCategory.PHARMACY
@@ -699,7 +714,7 @@ def extract_hinglish_inr_amount(text: str) -> float | None:
     norm = text.translate(_DEVANAGARI_DIGITS).lower().strip()
     norm_clean = re.sub(r"[,]", "", norm)
 
-    # 1. Explicit currency symbol / word patterns: ₹420, rs. 1,450, 450 rupees/rupaye/bucks/inr
+    # 1. Explicit currency symbol / word patterns: ₹420, rs. 1,450, 450 rupees/rupaye/bucks/inr, or corrupted ’1,900
     patterns = [
         r"(?:₹|rs\.?|inr)\s*(\d+(?:\.\d{1,2})?)",
         r"(\d+(?:\.\d{1,2})?)\s*(?:₹|rs\.?|inr|rupees?|rupaye|rupaya|rupiya|bucks|रुपये|रुपए|का\s+है|लगेगा|पड़ेगा)",
@@ -710,6 +725,28 @@ def extract_hinglish_inr_amount(text: str) -> float | None:
             val = float(m.group(1))
             if 5.0 <= val <= 500_000.0:
                 return val
+
+    # 1b. Comma-grouped Indian rupee rates ("1,900", "2,700", "12,500") or "is 1900 / charges 1900" in price replies
+    comma_matches = [
+        float(m.group(1).replace(",", ""))
+        for m in re.finditer(r"(?<!\d)([1-9]\d{0,2},\d{3})(?!\d)", norm)
+    ]
+    valid_comma = [v for v in comma_matches if 50.0 <= v <= 200_000.0]
+    if valid_comma:
+        return min(valid_comma)
+
+    conversational_price_matches = [
+        float(m.group(1))
+        for m in re.finditer(
+            r"\b(?:is|are|for|around|charge\s+is|charges\s+are|rate\s+is|price\s+is)\s+[’']?(\d{3,5})\b",
+            norm_clean,
+        )
+    ]
+    valid_conv = [
+        v for v in conversational_price_matches if 80.0 <= v <= 150_000.0 and not (2024.0 <= v <= 2030.0)
+    ]
+    if valid_conv:
+        return min(valid_conv)
 
     # 2. Compound & fractional Hinglish / Hindi idioms — evaluate hazaar (1000) BEFORE sau (100)
     def _tok_val(tok: str) -> float:
@@ -1093,6 +1130,13 @@ def gate_pstn_background_chatter(
     return attenuated.tobytes(), rms * 0.04
 
 
+def _sanitize_rupee_typos(text: str) -> str:
+    """Fix corrupted curly apostrophes before rupee digits (e.g. `’1,900` -> `₹1,900`)."""
+    if not text:
+        return text
+    return re.sub(r"[’'](?=\d{1,2},\d{3}\b|\d{3,5}\b)", "₹", text)
+
+
 def _default_availability_label(
     in_stock: bool | None, cat: PlaceCategory, eta_or_slot: str | None = None
 ) -> str:
@@ -1104,6 +1148,7 @@ def _default_availability_label(
             PlaceCategory.DIAGNOSTICS: "Scan Slot Open",
             PlaceCategory.PETROL: "Available Now",
             PlaceCategory.AUTO: "Available Now",
+            PlaceCategory.SPA: "Spa Slot Open",
             PlaceCategory.SALON: "Slot Available",
             PlaceCategory.PHARMACY: "In Stock",
         }
@@ -1249,9 +1294,9 @@ async def evaluate_transcript_side_brain(
         f"Transcript so far:\n{convo_text}\n\n"
         f"Instructions:\n"
         f"1. Convert any English, Hinglish, or Hindi spoken rupee price (e.g. 'saadhe chaar sau' -> 450, "
-        f"'dedh hazaar' -> 1500, 'two thousand' / '20 hundred' -> 2000, '₹420' -> 420) into numeric `price_inr`. "
-        f"Use item domain context (e.g., 1.5T MRI in India is typically ₹2,000–₹12,000; medicine strips ₹30–₹2,000), "
-        f"and leave `price_inr=null` if no price was stated.\n"
+        f"'dedh hazaar' -> 1500, 'two thousand' / '20 hundred' -> 2000, '₹420' -> 420, 'Thai dry is 1,900 and deep tissue is 2,700' -> 1900) into numeric `price_inr`. "
+        f"If multiple tiers/options are quoted, set `price_inr` to the lower/starting price and always use the '₹' rupee symbol (never curly apostrophe ’) in `summary_notes` and `key_insights`. "
+        f"Leave `price_inr=null` if no price was stated.\n"
         f"2. Set `in_stock=true` if available/slot open today, `false` if unavailable/today full, `null` if not yet answered.\n"
         f"3. Populate `eta_or_slot` with the slot timing — INCLUDING alternative availability when today is full "
         f"(e.g., if receptionist says 'No slot today, available day after tomorrow', set `in_stock=false` and "
@@ -1302,21 +1347,26 @@ async def evaluate_transcript_side_brain(
 def decision_to_inr_quote(decision: SideBrainDecision) -> InrQuote:
     """Format a SideBrainDecision into a UI-ready InrQuote."""
     price_display: str | None = None
-    if decision.price_inr is not None:
-        if float(decision.price_inr).is_integer():
-            price_display = f"₹{int(decision.price_inr):,}"
+    clean_notes = _sanitize_rupee_typos(decision.summary_notes)
+    clean_insights = [_sanitize_rupee_typos(x) for x in decision.key_insights]
+    resolved_price = decision.price_inr
+    if resolved_price is None and decision.in_stock is True and clean_notes:
+        resolved_price = extract_hinglish_inr_amount(clean_notes)
+    if resolved_price is not None:
+        if float(resolved_price).is_integer():
+            price_display = f"₹{int(resolved_price):,}"
         else:
-            price_display = f"₹{decision.price_inr:,.2f}"
+            price_display = f"₹{resolved_price:,.2f}"
 
     return InrQuote(
         in_stock=decision.in_stock,
         availability_label=decision.availability_label,
-        price_inr=decision.price_inr,
+        price_inr=resolved_price,
         price_display=price_display,
         unit_or_pack=decision.unit_or_pack,
         eta_or_slot=decision.eta_or_slot,
-        notes=decision.summary_notes,
-        key_insights=decision.key_insights,
+        notes=clean_notes,
+        key_insights=clean_insights,
         vocal_tone=decision.vocal_tone,
     )
 

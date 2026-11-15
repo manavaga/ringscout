@@ -325,7 +325,13 @@ def _expected_passcode() -> str:
 def _check_admin_passcode_value(provided: str | None) -> bool:
     expected = _expected_admin_passcode()
     if not expected:
-        return True
+        # Fail CLOSED on all live servers & public consumer deployments; allow unset only in legacy hermetic pytest
+        if (
+            os.environ.get("PYTEST_CURRENT_TEST")
+            and os.environ.get("RINGSCOUT_PUBLIC_CONSUMER_ACCESS", "").strip() != "1"
+        ):
+            return True
+        return False
     if not provided:
         return False
     return hmac.compare_digest(expected, provided.strip())
@@ -457,11 +463,51 @@ class BoundedAudioStore(OrderedDict[tuple[str, str], bytes]):
             self.popitem(last=False)
 
 
-def _quest_payload(quest: QuestSession) -> dict[str, Any]:
-    return {
-        "quest": quest.model_dump(),
-        "ranked_quotes": [c.model_dump() for c in quest.ranked_quotes()],
+def _quest_payload(
+    quest: QuestSession,
+    *,
+    include_token: bool = False,
+    mask_phones: bool = False,
+) -> dict[str, Any]:
+    q_dump = quest.model_dump()
+    ranked_dump = [c.model_dump() for c in quest.ranked_quotes()]
+    if mask_phones:
+        for s in q_dump.get("shops", []):
+            s["phone_e164"] = ""
+            s["phone_display"] = _mask_phone_for_public_dashboard(str(s.get("phone_display") or ""))
+        for c in (q_dump.get("calls") or {}).values():
+            if "shop" in c:
+                c["shop"]["phone_e164"] = ""
+                c["shop"]["phone_display"] = _mask_phone_for_public_dashboard(
+                    str(c["shop"].get("phone_display") or "")
+                )
+        for c in ranked_dump:
+            if "shop" in c:
+                c["shop"]["phone_e164"] = ""
+                c["shop"]["phone_display"] = _mask_phone_for_public_dashboard(
+                    str(c["shop"].get("phone_display") or "")
+                )
+    out: dict[str, Any] = {
+        "quest": q_dump,
+        "ranked_quotes": ranked_dump,
     }
+    if include_token:
+        out["quest_token"] = LiveIndiaPstnAdapter.sign_pstn_token(
+            "quest_owner", quest.quest_id, "owner"
+        )
+    return out
+
+
+def _is_quest_owner_or_admin(request: Request, quest_id: str) -> bool:
+    provided_pass = request.headers.get("x-ringscout-passcode") or request.query_params.get(
+        "passcode"
+    )
+    if _check_admin_passcode_value(provided_pass):
+        return True
+    qtok = request.headers.get("x-quest-token") or request.query_params.get("token")
+    if LiveIndiaPstnAdapter.verify_pstn_token("quest_owner", quest_id, "owner", qtok):
+        return True
+    return False
 
 
 def _build_llms_txt(base_url: str, full: bool = False) -> str:
@@ -647,6 +693,8 @@ class QuestManager:
             preferred_tone=req.preferred_tone,
             voice_name=req.voice_name,
             mode=CallMode.LIVE_PSTN,
+            origin_channel="admin_self_test",
+            caller_agent="Operator Self-Test",
             shops=[shop],
             calls=calls,
         )
@@ -834,7 +882,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
         wss_ok = _is_publicly_reachable_base(base_url) or is_bridge_enabled()
         return {
             "status": "ok",
-            "version": "2.0.0",
+            "version": "3.0.0",
             "market": "IN",
             "gcp_project": GCP_PROJECT_ID,
             "live_model": LIVE_AUDIO_MODEL,
@@ -980,7 +1028,11 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
         provided_pass = request.headers.get("x-ringscout-passcode") or request.query_params.get("passcode")
         is_admin = _check_admin_passcode_value(provided_pass)
 
-        all_quests = list(manager.quests.values())
+        all_quests = [
+            q
+            for q in manager.quests.values()
+            if is_admin or not (q.quest_id.startswith("q_test_") or q.origin_channel == "admin_self_test")
+        ]
         channel_counts: Counter[str] = Counter()
         total_calls_dialed = 0
         pstn_calls_dialed = 0
@@ -1041,7 +1093,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
             ).strftime("%Y-%m-%dT%H:%M:%SZ")
             feed.append(
                 {
-                    "quest_id": q.quest_id,
+                    "quest_id": q.quest_id if is_admin else f"q_••••{q.quest_id[-4:]}",
                     "created_at": created_iso,
                     "status": q.status,
                     "mode": q.mode.value,
@@ -1136,7 +1188,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
             asyncio.create_task(
                 _staggered_pstn_dial(0.0, quest, quest.shops[0], base_url, stop_ev)
             )
-        return _quest_payload(quest)
+        return _quest_payload(quest, include_token=True)
 
     # --- Consumer H2A Endpoints (`/api/discover`, `/api/quests`) ---
 
@@ -1163,9 +1215,16 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
         return resp
 
     @app.post("/api/places/add", dependencies=[Depends(verify_user_passcode)])
-    async def add_specific_place_endpoint(req: CustomPlaceAddRequest) -> dict[str, Any]:
-        """Search Google Maps for a specific named salon/spa/hotel OR add a known business +91 number."""
+    async def add_specific_place_endpoint(
+        req: CustomPlaceAddRequest, request: Request
+    ) -> dict[str, Any]:
+        """Search Google Maps for a specific named salon/spa/hotel OR add a verified business +91 number."""
         raw_phone = req.phone.strip()
+        provided_pass = request.headers.get("x-ringscout-passcode") or request.query_params.get(
+            "passcode"
+        )
+        is_admin = _check_admin_passcode_value(provided_pass)
+
         if raw_phone:
             e164, display, reason = normalize_indian_phone(raw_phone)
             if reason != "ok" or not e164 or not display:
@@ -1173,6 +1232,31 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
                     status_code=400,
                     detail="Enter a valid Indian +91 business mobile or STD landline number (1800 toll-free numbers are blocked).",
                 )
+            # P0 Provenance Guard: Unauthenticated public callers cannot inject arbitrary personal +91 numbers
+            # into verified_google_phones unless the number matches a Google Maps business listing!
+            if not is_admin and e164 not in manager.verified_google_phones:
+                try:
+                    verify_disc = await discover_indian_shops(
+                        DiscoverRequest(
+                            specific_place=req.place_name.strip(),
+                            place_category=req.place_category,
+                            city=req.city,
+                            locality=req.locality,
+                            max_shops=6,
+                        )
+                    )
+                    manager.register_discovered_shops(verify_disc)
+                except Exception:
+                    pass
+                if e164 not in manager.verified_google_phones:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=(
+                            "Unlisted +91 phone numbers require Admin Passcode to prevent personal-number spam. "
+                            "Leave the phone field blank to add any listed salon, spa, or business directly from Google Maps."
+                        ),
+                    )
+
             manager.verified_google_phones.add(e164)
             shop = IndianShopTarget(
                 shop_id=f"custom_{uuid.uuid4().hex[:6]}",
@@ -1288,38 +1372,60 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
                         )
                     )
 
-        return _quest_payload(quest)
+        return _quest_payload(quest, include_token=True)
 
     @app.get("/api/quests/{quest_id}", dependencies=[Depends(verify_user_passcode)])
-    async def get_quest(quest_id: str) -> dict[str, Any]:
+    async def get_quest(quest_id: str, request: Request) -> dict[str, Any]:
         quest = manager.quests.get(quest_id)
         if not quest:
             raise HTTPException(status_code=404, detail="Quest not found")
-        return _quest_payload(quest)
+        authorized = _is_quest_owner_or_admin(request, quest_id)
+        if (quest_id.startswith("q_test_") or quest.origin_channel == "admin_self_test") and not authorized:
+            raise HTTPException(status_code=403, detail="Admin passcode required to inspect operator self-test quest.")
+        return _quest_payload(quest, mask_phones=not authorized)
 
     @app.post("/api/quests/{quest_id}/stop", dependencies=[Depends(verify_user_passcode)])
-    async def stop_quest_endpoint(quest_id: str) -> dict[str, Any]:
+    async def stop_quest_endpoint(quest_id: str, request: Request) -> dict[str, Any]:
+        if quest_id not in manager.quests:
+            raise HTTPException(status_code=404, detail="Quest not found")
+        if not _is_quest_owner_or_admin(request, quest_id):
+            raise HTTPException(
+                status_code=403,
+                detail="Quest owner token (X-Quest-Token) or Admin Passcode required to stop an active quest.",
+            )
         quest = await manager.stop_quest(quest_id)
         return _quest_payload(quest)
 
     @app.get("/api/quests/{quest_id}/events", dependencies=[Depends(verify_user_passcode)])
-    async def stream_quest_events(quest_id: str) -> StreamingResponse:
+    async def stream_quest_events(quest_id: str, request: Request) -> StreamingResponse:
         quest = manager.quests.get(quest_id)
         if not quest:
             raise HTTPException(status_code=404, detail="Quest not found")
+        authorized = _is_quest_owner_or_admin(request, quest_id)
+        if (quest_id.startswith("q_test_") or quest.origin_channel == "admin_self_test") and not authorized:
+            raise HTTPException(status_code=403, detail="Admin passcode required to stream operator self-test quest.")
 
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=256)
         manager.subscribers[quest_id].add(queue)
 
         async def event_generator() -> AsyncIterator[str]:
             try:
-                yield f"event: snapshot\ndata: {json.dumps(_quest_payload(quest))}\n\n"
+                yield f"event: snapshot\ndata: {json.dumps(_quest_payload(quest, mask_phones=not authorized))}\n\n"
                 while True:
                     try:
                         item = await asyncio.wait_for(queue.get(), timeout=15.0)
                         ev_name = item["event"]
                         data = dict(item["data"])
-                        data["ranked_quotes"] = [c.model_dump() for c in quest.ranked_quotes()]
+                        masked_payload = _quest_payload(quest, mask_phones=not authorized)
+                        data["ranked_quotes"] = masked_payload["ranked_quotes"]
+                        if not authorized and "call" in data and isinstance(data["call"], dict):
+                            call_copy = json.loads(json.dumps(data["call"]))
+                            if "shop" in call_copy:
+                                call_copy["shop"]["phone_e164"] = ""
+                                call_copy["shop"]["phone_display"] = _mask_phone_for_public_dashboard(
+                                    str(call_copy["shop"].get("phone_display") or "")
+                                )
+                            data["call"] = call_copy
                         data["quest_status"] = quest.status
                         yield f"event: {ev_name}\ndata: {json.dumps(data)}\n\n"
                         if ev_name == "quest_complete" and quest.mode != CallMode.BROWSER_MIC:
