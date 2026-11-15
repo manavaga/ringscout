@@ -8,14 +8,14 @@ cd "$SCRIPT_DIR"
 PROJECT_ID="${GCP_PROJECT_ID:-manav-chub}"
 REGION="${GCP_LOCATION:-us-central1}"
 SERVICE_NAME="${RINGSCOUT_SERVICE_NAME:-ringscout}"
+export CLOUDSDK_CORE_ACCOUNT="${GCLOUD_ACCOUNT:-admin@manavagarwal.altostrat.com}"
 
-echo "==> Checking gcloud access to project '${PROJECT_ID}' (${REGION})..."
+echo "==> Checking gcloud access to project '${PROJECT_ID}' (${REGION}) as '${CLOUDSDK_CORE_ACCOUNT}'..."
 if ! gcloud run services list --project="${PROJECT_ID}" --region="${REGION}" --quiet >/dev/null 2>&1; then
   echo ""
-  echo "❌ Active gcloud session cannot access '${PROJECT_ID}' (token expired or wrong account)."
-  echo "Authenticate your GCP project account first, then re-run ./deploy_cloud_run.sh:"
-  echo ""
-  echo "  gcloud auth login && gcloud auth application-default login"
+  echo "❌ Active gcloud token for '${CLOUDSDK_CORE_ACCOUNT}' expired."
+  echo "Run:"
+  echo "  gcloud auth login ${CLOUDSDK_CORE_ACCOUNT} --no-launch-browser && ./deploy_cloud_run.sh"
   echo ""
   exit 1
 fi
@@ -42,6 +42,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --cpu 2 \
   --memory 1Gi \
   --session-affinity \
+  --quiet \
   --set-env-vars "${ENV_VARS}" \
   --set-secrets "${SECRETS_MOUNT}"
 
