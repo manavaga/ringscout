@@ -632,23 +632,23 @@
   <main class="main">
     <section class="hero">
       <h1>Call local places in parallel. Get live answers.</h1>
-      <p>Search any spa, salon, hotel, restaurant, or clinic on Google Maps — or add a specific place by name — and let RingScout ask on the phone for you.</p>
+      <p>Search any restaurant, salon, hotel, clinic, or diagnostic lab on Google Maps — or add a specific place by name — and let RingScout check on the phone for you.</p>
     </section>
 
     <section class="command-card" aria-label="Voice Search Composer">
       <div class="intent-bar" id="intentBar">
         <button type="button" class="intent-tab active" data-cat="custom">Auto-Detect</button>
-        <button type="button" class="intent-tab" data-cat="spa">Spa &amp; Massage</button>
+        <button type="button" class="intent-tab" data-cat="restaurant">Dining</button>
         <button type="button" class="intent-tab" data-cat="salon">Hair &amp; Salon</button>
         <button type="button" class="intent-tab" data-cat="hotel">Hotels</button>
-        <button type="button" class="intent-tab" data-cat="restaurant">Dining</button>
         <button type="button" class="intent-tab" data-cat="diagnostics">MRI &amp; Labs</button>
         <button type="button" class="intent-tab" data-cat="clinic">Clinics</button>
         <button type="button" class="intent-tab" data-cat="petrol">Fuel &amp; EV</button>
         <button type="button" class="intent-tab" data-cat="pharmacy">Pharmacy</button>
+        <button type="button" class="intent-tab" data-cat="spa">Wellness &amp; Spa</button>
       </div>
 
-      <textarea id="purposeInput" class="prompt-input" placeholder="What should we find &amp; ask? e.g. 60-min deep tissue spa slot today at 7 PM and price in ₹">60-minute deep tissue body massage spa slot today at 7 PM and confirm walk-in rate in ₹</textarea>
+      <textarea id="purposeInput" class="prompt-input" placeholder="What should we find &amp; ask? e.g. Table for 4 tonight at 8:30 PM — check live wait time and outdoor seating">Table for 4 tonight at 8:30 PM — check live wait time and if outdoor seating is available</textarea>
 
       <div class="quick-examples" id="quickExamples"></div>
 
@@ -708,7 +708,7 @@
 
       <div class="add-place-bar">
         <div class="add-place-row">
-          <input id="addPlaceNameInput" class="add-place-input" type="text" placeholder="+ Add a specific spa, salon, hotel, or business (e.g. Four Fountains Spa, BBLUNT, Taj Lands End)…" />
+          <input id="addPlaceNameInput" class="add-place-input" type="text" placeholder="+ Add a specific restaurant, salon, hotel, or clinic (e.g. Bastian, Izumi, BBLUNT, Taj Lands End)…" />
           <input id="addPlacePhoneInput" class="add-place-input" type="text" placeholder="+91 business phone" style="display:none;max-width:190px;font-family:var(--mono);" />
           <button type="button" class="btn btn-ghost" id="addPlaceBtn" style="height:36px;padding:0 14px;">+ Add Place</button>
           <button type="button" class="manual-phone-link" id="toggleManualPhoneBtn">or enter +91 number</button>
@@ -745,8 +745,8 @@
   <script>
     const EXAMPLES = {
       custom: [
-        '60-minute deep tissue body massage spa slot today at 7 PM and walk-in rate in ₹',
-        'Haircut and blow-dry appointment today at 6 PM and price in ₹',
+        'Table for 4 tonight at 8:30 PM — check live wait time and if outdoor seating is available',
+        'Haircut and styling appointment today evening and stylist rate in ₹',
         'Double room tonight with 10 AM early check-in and direct phone tariff in ₹'
       ],
       spa: [
