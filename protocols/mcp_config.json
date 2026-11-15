@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "ringscout": {
+      "url": "https://ringscout-hom7ntreuq-uc.a.run.app/mcp"
+    },
+    "ringscout-local-stdio": {
+      "command": "python3",
+      "args": [
+        "scripts/ringscout_mcp_stdio.py"
+      ],
+      "env": {
+        "RINGSCOUT_MCP_URL": "http://127.0.0.1:8088/mcp"
+      }
+    }
+  }
+}

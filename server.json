@@ -1,0 +1,17 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.manavagarwal/ringscout",
+  "description": "Parallel AI voice scout that calls real open Google Maps businesses (+91) to verify live availability, slots, and INR rates with 24kHz WAV proof.",
+  "status": "active",
+  "repository": {
+    "url": "https://github.com/manavagarwal/ringscout",
+    "source": "github"
+  },
+  "version": "3.0.0",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://ringscout-hom7ntreuq-uc.a.run.app/mcp"
+    }
+  ]
+}

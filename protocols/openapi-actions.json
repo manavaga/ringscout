@@ -1,0 +1,132 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "RingScout \u2014 Real-Time Google Maps Voice Insights API",
+    "version": "2.0.0",
+    "description": "Calls real open hotels, restaurants, clinics, MRI centers, petrol pumps, salons, auto shops, or pharmacies found on Google Maps in parallel (Indian English & Hindi) to verify live room/table/slot availability, wait times, \u20b9 tariffs/prices, and custom answers with playable .wav audio proof."
+  },
+  "servers": [
+    {
+      "url": "https://ringscout-hom7ntreuq-uc.a.run.app"
+    }
+  ],
+  "paths": {
+    "/api/v1/scout": {
+      "post": {
+        "operationId": "scoutPlacesOnGoogleMaps",
+        "summary": "Find open places on Google Maps and call them in parallel to verify live availability & \u20b9 rates",
+        "description": "Discovers up to 5 open Google Maps places matching the category/area and conducts brief, natural voice calls to verify live availability, wait times, rates in \u20b9, and specific questions.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "item_question"
+                ],
+                "properties": {
+                  "place_category": {
+                    "type": "string",
+                    "enum": [
+                      "hotel",
+                      "restaurant",
+                      "clinic",
+                      "diagnostics",
+                      "petrol",
+                      "auto",
+                      "salon",
+                      "pharmacy",
+                      "custom"
+                    ],
+                    "default": "hotel",
+                    "description": "Location category on Google Maps."
+                  },
+                  "item_question": {
+                    "type": "string",
+                    "description": "What to ask the place on the phone call."
+                  },
+                  "city": {
+                    "type": "string",
+                    "default": "Mumbai",
+                    "description": "City name in India."
+                  },
+                  "locality": {
+                    "type": "string",
+                    "default": "Bandra West",
+                    "description": "Neighbourhood or locality."
+                  },
+                  "specific_place": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Optional specific business name on Google Maps."
+                  },
+                  "caller_name": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Optional caller first name for natural greeting."
+                  },
+                  "max_shops": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5,
+                    "default": 3
+                  },
+                  "preferred_tone": {
+                    "type": "string",
+                    "enum": [
+                      "polite_indian_english",
+                      "conversational_hinglish",
+                      "natural_hindi"
+                    ],
+                    "default": "polite_indian_english"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Ranked verified insights, \u20b9 quotes, transcripts, and 24kHz .wav audio URLs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment Required when Phase B Stripe MPP or x402 USDC gate is enabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pricing": {
+      "get": {
+        "operationId": "getRingScoutStatusAndPricing",
+        "summary": "Check active Phase A (free) vs Phase B (Stripe MPP / x402) status and capabilities",
+        "responses": {
+          "200": {
+            "description": "Pricing and protocol capabilities.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

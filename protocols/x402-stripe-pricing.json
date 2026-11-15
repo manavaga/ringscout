@@ -1,0 +1,522 @@
+{
+  "discovery": {
+    "x402Version": 2,
+    "service": "RingScout India +91 Voice Oracle",
+    "payTo": "0xafa03d9F1267d977310be682e82A5338b97D22C2",
+    "facilitator": "https://www.x402.org/facilitator/verify",
+    "liveIndiaPstnConfigured": true,
+    "a2aAgentCard": "https://ringscout-hom7ntreuq-uc.a.run.app/.well-known/agent-card.json",
+    "resources": [
+      {
+        "url": "https://ringscout-hom7ntreuq-uc.a.run.app/api/v1/scout",
+        "method": "POST",
+        "protocol": "x402-http-rest",
+        "priceUsd": 0.75,
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:8453",
+            "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "amount": "750000",
+            "payTo": "0xafa03d9F1267d977310be682e82A5338b97D22C2",
+            "maxTimeoutSeconds": 120,
+            "outputSchema": {
+              "input": {
+                "type": "http",
+                "method": "POST",
+                "bodyType": "json",
+                "bodyFields": {
+                  "query": {
+                    "type": "string",
+                    "required": false,
+                    "description": "Google Maps category search in India (e.g. 'MRI scan center radiology hospital' or 'pharmacy chemist open now')"
+                  },
+                  "item_question": {
+                    "type": "string",
+                    "required": true,
+                    "description": "Medicine, MRI/CT scan, or product availability + walk-in \u20b9 price question to ask by voice"
+                  },
+                  "city": {
+                    "type": "string",
+                    "required": false,
+                    "description": "Indian city (e.g. 'Mumbai', 'Bengaluru')"
+                  },
+                  "locality": {
+                    "type": "string",
+                    "required": false,
+                    "description": "Neighbourhood (e.g. 'Bandra West', 'Indiranagar')"
+                  },
+                  "preferred_tone": {
+                    "type": "string",
+                    "required": false,
+                    "description": "'polite_indian_english' (en-IN) or 'conversational_hinglish' (hi-IN)"
+                  }
+                }
+              },
+              "output": {
+                "type": "object",
+                "description": "Ranked \u20b9 INR quotes, stock/slot availability, transcripts, and signed 24kHz .wav audio proof URLs"
+              }
+            },
+            "extra": {
+              "name": "USDC",
+              "version": "2",
+              "refundPolicy": "full_refund_if_zero_stores_connect"
+            }
+          },
+          {
+            "scheme": "exact",
+            "network": "eip155:84532",
+            "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+            "amount": "750000",
+            "payTo": "0xafa03d9F1267d977310be682e82A5338b97D22C2",
+            "maxTimeoutSeconds": 120,
+            "outputSchema": {
+              "input": {
+                "type": "http",
+                "method": "POST",
+                "bodyType": "json",
+                "bodyFields": {
+                  "query": {
+                    "type": "string",
+                    "required": false,
+                    "description": "Google Maps category search in India (e.g. 'MRI scan center radiology hospital' or 'pharmacy chemist open now')"
+                  },
+                  "item_question": {
+                    "type": "string",
+                    "required": true,
+                    "description": "Medicine, MRI/CT scan, or product availability + walk-in \u20b9 price question to ask by voice"
+                  },
+                  "city": {
+                    "type": "string",
+                    "required": false,
+                    "description": "Indian city (e.g. 'Mumbai', 'Bengaluru')"
+                  },
+                  "locality": {
+                    "type": "string",
+                    "required": false,
+                    "description": "Neighbourhood (e.g. 'Bandra West', 'Indiranagar')"
+                  },
+                  "preferred_tone": {
+                    "type": "string",
+                    "required": false,
+                    "description": "'polite_indian_english' (en-IN) or 'conversational_hinglish' (hi-IN)"
+                  }
+                }
+              },
+              "output": {
+                "type": "object",
+                "description": "Ranked \u20b9 INR quotes, stock/slot availability, transcripts, and signed 24kHz .wav audio proof URLs"
+              }
+            },
+            "extra": {
+              "name": "USDC",
+              "version": "2",
+              "refundPolicy": "full_refund_if_zero_stores_connect"
+            }
+          }
+        ]
+      },
+      {
+        "url": "https://ringscout-hom7ntreuq-uc.a.run.app/a2a",
+        "method": "POST",
+        "protocol": "google-a2a-1.0+x402-v2",
+        "priceUsd": 0.75,
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:8453",
+            "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "amount": "750000",
+            "payTo": "0xafa03d9F1267d977310be682e82A5338b97D22C2",
+            "maxTimeoutSeconds": 120,
+            "outputSchema": {
+              "input": {
+                "type": "http",
+                "method": "POST",
+                "bodyType": "json",
+                "bodyFields": {
+                  "query": {
+                    "type": "string",
+                    "required": false,
+                    "description": "Google Maps category search in India (e.g. 'MRI scan center radiology hospital' or 'pharmacy chemist open now')"
+                  },
+                  "item_question": {
+                    "type": "string",
+                    "required": true,
+                    "description": "Medicine, MRI/CT scan, or product availability + walk-in \u20b9 price question to ask by voice"
+                  },
+                  "city": {
+                    "type": "string",
+                    "required": false,
+                    "description": "Indian city (e.g. 'Mumbai', 'Bengaluru')"
+                  },
+                  "locality": {
+                    "type": "string",
+                    "required": false,
+                    "description": "Neighbourhood (e.g. 'Bandra West', 'Indiranagar')"
+                  },
+                  "preferred_tone": {
+                    "type": "string",
+                    "required": false,
+                    "description": "'polite_indian_english' (en-IN) or 'conversational_hinglish' (hi-IN)"
+                  }
+                }
+              },
+              "output": {
+                "type": "object",
+                "description": "Ranked \u20b9 INR quotes, stock/slot availability, transcripts, and signed 24kHz .wav audio proof URLs"
+              }
+            },
+            "extra": {
+              "name": "USDC",
+              "version": "2",
+              "refundPolicy": "full_refund_if_zero_stores_connect"
+            }
+          },
+          {
+            "scheme": "exact",
+            "network": "eip155:84532",
+            "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+            "amount": "750000",
+            "payTo": "0xafa03d9F1267d977310be682e82A5338b97D22C2",
+            "maxTimeoutSeconds": 120,
+            "outputSchema": {
+              "input": {
+                "type": "http",
+                "method": "POST",
+                "bodyType": "json",
+                "bodyFields": {
+                  "query": {
+                    "type": "string",
+                    "required": false,
+                    "description": "Google Maps category search in India (e.g. 'MRI scan center radiology hospital' or 'pharmacy chemist open now')"
+                  },
+                  "item_question": {
+                    "type": "string",
+                    "required": true,
+                    "description": "Medicine, MRI/CT scan, or product availability + walk-in \u20b9 price question to ask by voice"
+                  },
+                  "city": {
+                    "type": "string",
+                    "required": false,
+                    "description": "Indian city (e.g. 'Mumbai', 'Bengaluru')"
+                  },
+                  "locality": {
+                    "type": "string",
+                    "required": false,
+                    "description": "Neighbourhood (e.g. 'Bandra West', 'Indiranagar')"
+                  },
+                  "preferred_tone": {
+                    "type": "string",
+                    "required": false,
+                    "description": "'polite_indian_english' (en-IN) or 'conversational_hinglish' (hi-IN)"
+                  }
+                }
+              },
+              "output": {
+                "type": "object",
+                "description": "Ranked \u20b9 INR quotes, stock/slot availability, transcripts, and signed 24kHz .wav audio proof URLs"
+              }
+            },
+            "extra": {
+              "name": "USDC",
+              "version": "2",
+              "refundPolicy": "full_refund_if_zero_stores_connect"
+            }
+          }
+        ]
+      },
+      {
+        "url": "https://ringscout-hom7ntreuq-uc.a.run.app/mcp",
+        "method": "POST",
+        "protocol": "mcp-streamable-http+x402-v2",
+        "priceUsd": 0.75,
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:8453",
+            "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "amount": "750000",
+            "payTo": "0xafa03d9F1267d977310be682e82A5338b97D22C2",
+            "maxTimeoutSeconds": 120,
+            "outputSchema": {
+              "input": {
+                "type": "http",
+                "method": "POST",
+                "bodyType": "json",
+                "bodyFields": {
+                  "query": {
+                    "type": "string",
+                    "required": false,
+                    "description": "Google Maps category search in India (e.g. 'MRI scan center radiology hospital' or 'pharmacy chemist open now')"
+                  },
+                  "item_question": {
+                    "type": "string",
+                    "required": true,
+                    "description": "Medicine, MRI/CT scan, or product availability + walk-in \u20b9 price question to ask by voice"
+                  },
+                  "city": {
+                    "type": "string",
+                    "required": false,
+                    "description": "Indian city (e.g. 'Mumbai', 'Bengaluru')"
+                  },
+                  "locality": {
+                    "type": "string",
+                    "required": false,
+                    "description": "Neighbourhood (e.g. 'Bandra West', 'Indiranagar')"
+                  },
+                  "preferred_tone": {
+                    "type": "string",
+                    "required": false,
+                    "description": "'polite_indian_english' (en-IN) or 'conversational_hinglish' (hi-IN)"
+                  }
+                }
+              },
+              "output": {
+                "type": "object",
+                "description": "Ranked \u20b9 INR quotes, stock/slot availability, transcripts, and signed 24kHz .wav audio proof URLs"
+              }
+            },
+            "extra": {
+              "name": "USDC",
+              "version": "2",
+              "refundPolicy": "full_refund_if_zero_stores_connect"
+            }
+          },
+          {
+            "scheme": "exact",
+            "network": "eip155:84532",
+            "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+            "amount": "750000",
+            "payTo": "0xafa03d9F1267d977310be682e82A5338b97D22C2",
+            "maxTimeoutSeconds": 120,
+            "outputSchema": {
+              "input": {
+                "type": "http",
+                "method": "POST",
+                "bodyType": "json",
+                "bodyFields": {
+                  "query": {
+                    "type": "string",
+                    "required": false,
+                    "description": "Google Maps category search in India (e.g. 'MRI scan center radiology hospital' or 'pharmacy chemist open now')"
+                  },
+                  "item_question": {
+                    "type": "string",
+                    "required": true,
+                    "description": "Medicine, MRI/CT scan, or product availability + walk-in \u20b9 price question to ask by voice"
+                  },
+                  "city": {
+                    "type": "string",
+                    "required": false,
+                    "description": "Indian city (e.g. 'Mumbai', 'Bengaluru')"
+                  },
+                  "locality": {
+                    "type": "string",
+                    "required": false,
+                    "description": "Neighbourhood (e.g. 'Bandra West', 'Indiranagar')"
+                  },
+                  "preferred_tone": {
+                    "type": "string",
+                    "required": false,
+                    "description": "'polite_indian_english' (en-IN) or 'conversational_hinglish' (hi-IN)"
+                  }
+                }
+              },
+              "output": {
+                "type": "object",
+                "description": "Ranked \u20b9 INR quotes, stock/slot availability, transcripts, and signed 24kHz .wav audio proof URLs"
+              }
+            },
+            "extra": {
+              "name": "USDC",
+              "version": "2",
+              "refundPolicy": "full_refund_if_zero_stores_connect"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "http_402_challenge": {
+    "x402Version": 2,
+    "error": "Payment Required ($0.75 USD via Stripe MPP / SPT or x402 Base USDC)",
+    "resource": {
+      "url": "https://ringscout-hom7ntreuq-uc.a.run.app/api/v1/scout",
+      "description": "Parallel en-IN / hi-IN voice insights across Google Maps hotels, restaurants, clinics, petrol stations, MRI centers & shops",
+      "mimeType": "application/json"
+    },
+    "accepts": [
+      {
+        "scheme": "exact",
+        "network": "eip155:8453",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "amount": "750000",
+        "payTo": "0xafa03d9F1267d977310be682e82A5338b97D22C2",
+        "maxTimeoutSeconds": 120,
+        "outputSchema": {
+          "input": {
+            "type": "http",
+            "method": "POST",
+            "bodyType": "json",
+            "bodyFields": {
+              "query": {
+                "type": "string",
+                "required": false,
+                "description": "Google Maps category search in India (e.g. 'MRI scan center radiology hospital' or 'pharmacy chemist open now')"
+              },
+              "item_question": {
+                "type": "string",
+                "required": true,
+                "description": "Medicine, MRI/CT scan, or product availability + walk-in \u20b9 price question to ask by voice"
+              },
+              "city": {
+                "type": "string",
+                "required": false,
+                "description": "Indian city (e.g. 'Mumbai', 'Bengaluru')"
+              },
+              "locality": {
+                "type": "string",
+                "required": false,
+                "description": "Neighbourhood (e.g. 'Bandra West', 'Indiranagar')"
+              },
+              "preferred_tone": {
+                "type": "string",
+                "required": false,
+                "description": "'polite_indian_english' (en-IN) or 'conversational_hinglish' (hi-IN)"
+              }
+            }
+          },
+          "output": {
+            "type": "object",
+            "description": "Ranked \u20b9 INR quotes, stock/slot availability, transcripts, and signed 24kHz .wav audio proof URLs"
+          }
+        },
+        "extra": {
+          "name": "USDC",
+          "version": "2",
+          "refundPolicy": "full_refund_if_zero_stores_connect"
+        }
+      },
+      {
+        "scheme": "exact",
+        "network": "eip155:84532",
+        "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "amount": "750000",
+        "payTo": "0xafa03d9F1267d977310be682e82A5338b97D22C2",
+        "maxTimeoutSeconds": 120,
+        "outputSchema": {
+          "input": {
+            "type": "http",
+            "method": "POST",
+            "bodyType": "json",
+            "bodyFields": {
+              "query": {
+                "type": "string",
+                "required": false,
+                "description": "Google Maps category search in India (e.g. 'MRI scan center radiology hospital' or 'pharmacy chemist open now')"
+              },
+              "item_question": {
+                "type": "string",
+                "required": true,
+                "description": "Medicine, MRI/CT scan, or product availability + walk-in \u20b9 price question to ask by voice"
+              },
+              "city": {
+                "type": "string",
+                "required": false,
+                "description": "Indian city (e.g. 'Mumbai', 'Bengaluru')"
+              },
+              "locality": {
+                "type": "string",
+                "required": false,
+                "description": "Neighbourhood (e.g. 'Bandra West', 'Indiranagar')"
+              },
+              "preferred_tone": {
+                "type": "string",
+                "required": false,
+                "description": "'polite_indian_english' (en-IN) or 'conversational_hinglish' (hi-IN)"
+              }
+            }
+          },
+          "output": {
+            "type": "object",
+            "description": "Ranked \u20b9 INR quotes, stock/slot availability, transcripts, and signed 24kHz .wav audio proof URLs"
+          }
+        },
+        "extra": {
+          "name": "USDC",
+          "version": "2",
+          "refundPolicy": "full_refund_if_zero_stores_connect"
+        }
+      }
+    ],
+    "extensions": {
+      "bazaar": {
+        "discoverable": true,
+        "category": "real_world_voice_oracle",
+        "country": "IN",
+        "schema": {
+          "input": {
+            "type": "http",
+            "method": "POST",
+            "bodyType": "json",
+            "bodyFields": {
+              "query": {
+                "type": "string",
+                "required": false,
+                "description": "Google Maps category search in India (e.g. 'MRI scan center radiology hospital' or 'pharmacy chemist open now')"
+              },
+              "item_question": {
+                "type": "string",
+                "required": true,
+                "description": "Medicine, MRI/CT scan, or product availability + walk-in \u20b9 price question to ask by voice"
+              },
+              "city": {
+                "type": "string",
+                "required": false,
+                "description": "Indian city (e.g. 'Mumbai', 'Bengaluru')"
+              },
+              "locality": {
+                "type": "string",
+                "required": false,
+                "description": "Neighbourhood (e.g. 'Bandra West', 'Indiranagar')"
+              },
+              "preferred_tone": {
+                "type": "string",
+                "required": false,
+                "description": "'polite_indian_english' (en-IN) or 'conversational_hinglish' (hi-IN)"
+              }
+            }
+          },
+          "output": {
+            "type": "object",
+            "description": "Ranked \u20b9 INR quotes, stock/slot availability, transcripts, and signed 24kHz .wav audio proof URLs"
+          }
+        }
+      }
+    },
+    "mpp": {
+      "protocol": "mpp-1.0",
+      "id": "mpp_7d43fc5adefc15632b_d3437110a0b39d57c375",
+      "realm": "ringscout",
+      "method": "stripe",
+      "intent": "charge",
+      "amount": "0.75",
+      "currency": "USD",
+      "request": "eyJhbW91bnQiOiI3NSIsImN1cnJlbmN5IjoidXNkIiwibWVyY2hhbnQiOiJyaW5nc2NvdXQiLCJyZXNvdXJjZSI6Imh0dHBzOi8vcmluZ3Njb3V0LWhvbTdudHJldXEtdWMuYS5ydW4uYXBwL2FwaS92MS9zY291dCIsInNwdFN1cHBvcnRlZCI6dHJ1ZX0",
+      "expires": "2026-11-15T11:00:34Z",
+      "methods": [
+        "stripe_spt",
+        "stripe_payment_intent",
+        "ap2_mandate"
+      ],
+      "checkoutUrl": null
+    },
+    "ap2": {
+      "protocol": "google-ap2-1.0",
+      "required_min_amount_usd": 0.75,
+      "header": "X-AP2-Mandate"
+    }
+  }
+}

@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RingScout Operator Console — DID Pool, Payment Gate, Call Logs &amp; Organic AI Traffic</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --surface-soft: #f1f5f9;
+      --ink: #0f172a;
+      --muted: #475569;
+      --subtle: #64748b;
+      --border: #e2e8f0;
+      --primary: #4f46e5;
+      --emerald: #059669;
+      --amber: #d97706;
+      --rose: #dc2626;
+      --radius: 14px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.5;
+    }
+    h1, h2, h3 { font-family: 'Plus Jakarta Sans', sans-serif; letter-spacing: -0.02em; }
+    .nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 30;
+    }
+    .nav-inner {
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 13px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .brand { text-decoration: none; color: var(--ink); font-weight: 800; font-size: 1.08rem; }
+    .nav-links { display: flex; gap: 10px; flex-wrap: wrap; }
+    .nav-link {
+      text-decoration: none;
+      color: var(--muted);
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+    }
+
+    .container { max-width: 1240px; margin: 0 auto; padding: 28px 24px 80px; }
+
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+    .kpi {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+    .kpi-label { font-size: 0.74rem; font-weight: 700; text-transform: uppercase; color: var(--subtle); }
+    .kpi-val { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 1.7rem; font-weight: 800; margin-top: 4px; }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-bottom: 22px;
+    }
+    @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+    .card h2 { margin: 0 0 6px; font-size: 1.15rem; }
+    .card p.sub { margin: 0 0 14px; font-size: 0.84rem; color: var(--muted); }
+
+    .field { margin-bottom: 11px; }
+    .field label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--subtle);
+      margin-bottom: 4px;
+    }
+    .field input, .field select, .field textarea {
+      width: 100%;
+      padding: 9px 11px;
+      border-radius: 9px;
+      border: 1px solid #cbd5e1;
+      font-family: inherit;
+      font-size: 0.88rem;
+    }
+    .btn {
+      padding: 9px 16px;
+      border-radius: 9px;
+      border: none;
+      font-weight: 700;
+      font-size: 0.86rem;
+      cursor: pointer;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-emerald { background: var(--emerald); color: #fff; }
+    .btn-outline { background: var(--surface-soft); color: var(--ink); border: 1px solid #cbd5e1; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    th { font-size: 0.72rem; text-transform: uppercase; color: var(--subtle); }
+
+    .quest-log-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 12px;
+      background: #fcfcfd;
+    }
+    .call-log-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 11px;
+      margin-top: 8px;
+      font-size: 0.82rem;
+    }
+    audio { width: 100%; height: 34px; margin-top: 6px; }
+    .toast {
+      display: none;
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: #ecfdf5;
+      color: #065f46;
+      border: 1px solid #a7f3d0;
+      margin-bottom: 16px;
+      font-size: 0.86rem;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <header class="nav">
+    <div class="nav-inner">
+      <a href="/" class="brand" id="admHome">⚙️ RingScout Operator Console</a>
+      <div class="nav-links">
+        <a href="/" class="nav-link" id="admConsumer">← Consumer Website</a>
+        <a href="/developers" class="nav-link" id="admDevs">🤖 Developers &amp; Connectors</a>
+        <button type="button" class="btn btn-outline" id="refreshAllBtn" style="padding:6px 12px;">↻ Refresh Telemetry</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <div id="passBar" class="card" style="display:none;margin-bottom:18px;background:#eef2ff;border-color:#c7d2fe;">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <strong>🔒 Operator Passcode Required:</strong>
+        <input type="password" id="admPassInput" placeholder="Enter RINGSCOUT_PASSCODE" style="max-width:260px;padding:8px 10px;border-radius:8px;border:1px solid #cbd5e1;" />
+        <button type="button" class="btn btn-primary" id="admUnlockBtn">Unlock Console</button>
+      </div>
+    </div>
+
+    <div id="toastMsg" class="toast"></div>
+
+    <!-- Organic & AI Traffic KPIs -->
+    <section class="kpi-row">
+      <div class="kpi">
+        <div class="kpi-label">AI Search / Bot Crawls</div>
+        <div class="kpi-val" id="kpiBots">0</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">AI &amp; Search Referrals</div>
+        <div class="kpi-val" id="kpiReferrals">0</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Live MCP / A2A Calls</div>
+        <div class="kpi-val" id="kpiProtocols">0</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Human Web Quests</div>
+        <div class="kpi-val" id="kpiQuests">0</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Active Payment Gate</div>
+        <div class="kpi-val" id="kpiGate" style="font-size:1.15rem;padding-top:8px;">Phase A (off)</div>
+      </div>
+    </section>
+
+    <section class="grid-2">
+      <!-- Card 1: Anti-Spam DID Pool & PSTN Carrier -->
+      <div class="card">
+        <h2>📞 Anti-Spam PSTN Carrier &amp; Multi-DID Rotation Pool</h2>
+        <p class="sub">Rotate across clean local landline DIDs (<code>+91-22-...</code> / <code>+91-80-...</code>) with automatic 1.8s–3.2s stagger so iOS Silence Unknown Callers &amp; Truecaller never flag burst-dialing as spam.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="field">
+            <label>Carrier Provider</label>
+            <select id="pstnProvider">
+              <option value="vobiz">Vobiz.ai (India +91)</option>
+              <option value="plivo">Plivo</option>
+              <option value="twilio">Twilio</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Primary Outbound DID (`+91...`)</label>
+            <input id="pstnFrom" placeholder="+912260001234" />
+          </div>
+        </div>
+        <div class="field">
+          <label>Additional Rotation Pool DIDs (Comma-separated `+91` numbers)</label>
+          <input id="pstnPool" placeholder="+918040001122, +912260005678 (rotates per shop)" />
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="field">
+            <label>Auth ID / Account SID</label>
+            <input id="pstnAuthId" placeholder="MA..." />
+          </div>
+          <div class="field">
+            <label>Auth Token</label>
+            <input type="password" id="pstnToken" placeholder="••••••••" />
+          </div>
+        </div>
+        <div class="field">
+          <label>Public Base URL (Optional — auto-detected on Cloud Run)</label>
+          <input id="pstnPublicUrl" placeholder="https://ringscout-hom7ntreuq-uc.a.run.app" />
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;">
+          <button type="button" class="btn btn-primary" id="savePstnBtn">Save Carrier &amp; DID Pool</button>
+          <span id="pstnStatusLabel" style="font-size:0.8rem;color:var(--muted);"></span>
+        </div>
+
+        <hr style="border:0;border-top:1px solid var(--border);margin:16px 0;" />
+        <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+          <div class="field" style="flex:1;margin:0;">
+            <label>📲 1-Click Self-Test Call (Your +91 Mobile)</label>
+            <input id="selfTestPhone" placeholder="+91 98..." />
+          </div>
+          <button type="button" class="btn btn-emerald" id="selfTestBtn">Ring My Phone</button>
+        </div>
+      </div>
+
+      <!-- Card 2: Phase A <-> Phase B Payment Gate & Stripe Live Key -->
+      <div class="card">
+        <h2>💳 A2A Payment Gate &amp; Stripe Protocol Switch</h2>
+        <p class="sub">Keep <strong>Phase A (`off`)</strong> while launching connectors across Claude, Gemini &amp; ChatGPT. Flip to <strong>Freemium</strong> or <strong>Phase B (`required`)</strong> anytime without redeploying.</p>
+        <div style="display:grid;grid-template-columns:1.3fr 0.7fr;gap:10px;">
+          <div class="field">
+            <label>Payment Gate Mode</label>
+            <select id="payGateSelect">
+              <option value="off">🟢 Phase A: Open Out-of-the-Box (Free w/ Daily Cap)</option>
+              <option value="freemium">🟡 Freemium: N Free Calls/Day → HTTP 402</option>
+              <option value="required">💳 Phase B: Strict HTTP 402 (Stripe MPP + x402 USDC)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Free Calls / Client / Day</label>
+            <input type="number" id="payFreeCap" value="10" min="1" max="500" />
+          </div>
+        </div>
+        <div class="field">
+          <label>Stripe Secret Key (RAM-only: `sk_test_...` or `sk_live_...` for live `PaymentIntents` / `SPT`)</label>
+          <input type="password" id="stripeSecretInput" placeholder="Leave blank to keep current or use HMAC MPP demo mode" />
+        </div>
+        <div class="field">
+          <label>Optional Stripe Checkout / Payment Link URL (surfaced to chat users on 402)</label>
+          <input id="stripeCheckoutInput" placeholder="https://buy.stripe.com/..." />
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;justify-content:space-between;">
+          <button type="button" class="btn btn-primary" id="savePayConfigBtn">Update Payment Gate</button>
+          <span id="payConfigStatus" style="font-size:0.8rem;color:var(--muted);"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Card 3: Organic & AI Crawler / Referral Analytics -->
+    <section class="card" style="margin-bottom:22px;">
+      <h2>📈 Organic &amp; AI Assistant Traffic Telemetry (Server-Side — Captures Headless Bots &amp; MCP)</h2>
+      <p class="sub">Tracks <code>OAI-SearchBot</code>, <code>ChatGPT-User</code>, <code>Claude-SearchBot</code>, <code>Google-Extended</code>, <code>PerplexityBot</code>, human chat referrals, and live <code>/mcp</code> &amp; <code>/a2a</code> calls that browser JS analytics miss.</p>
+      <div class="grid-2" style="margin-bottom:12px;">
+        <div>
+          <h3 style="font-size:0.9rem;margin:0 0 6px;">AI Crawlers, Referrals &amp; Protocol Breakdown</h3>
+          <table id="breakdownTable">
+            <thead><tr><th>Source / Channel</th><th>Hits</th></tr></thead>
+            <tbody><tr><td colspan="2" style="color:var(--subtle);">Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div>
+          <h3 style="font-size:0.9rem;margin:0 0 6px;">Recent Organic &amp; Agent Events</h3>
+          <div style="max-height:220px;overflow-y:auto;">
+            <table id="eventsTable">
+              <thead><tr><th>Time</th><th>Path</th><th>Signal</th></tr></thead>
+              <tbody><tr><td colspan="3" style="color:var(--subtle);">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Card 4: Live Call Logs, Transcripts & .wav Audio Inspector -->
+    <section class="card">
+      <h2>🎧 Recent Call Logs, Transcripts &amp; 24kHz `.wav` Inspector</h2>
+      <p class="sub">Inspect every Consumer Web, Self-Test, MCP, and A2A call directly in the browser without running <code>gcloud logging read</code>.</p>
+      <div id="questLogsContainer" style="color:var(--subtle);font-size:0.86rem;">No calls recorded in this server instance yet.</div>
+    </section>
+  </main>
+
+  <script>
+    let passcode = '';
+    const m = (window.location.hash || '').match(/passcode=([^&]+)/);
+    if (m) {
+      passcode = decodeURIComponent(m[1]);
+      sessionStorage.setItem('ringscout_passcode', passcode);
+    } else {
+      passcode = sessionStorage.getItem('ringscout_passcode') || '';
+    }
+
+    function syncLinks() {
+      const s = passcode ? `#passcode=${encodeURIComponent(passcode)}` : '';
+      document.getElementById('admHome').href = '/admin' + s;
+      document.getElementById('admConsumer').href = '/' + s;
+      document.getElementById('admDevs').href = '/developers' + s;
+    }
+
+    function headers() {
+      const h = { 'Content-Type': 'application/json' };
+      if (passcode) h['X-RingScout-Passcode'] = passcode;
+      return h;
+    }
+
+    function toast(msg) {
+      const el = document.getElementById('toastMsg');
+      el.textContent = msg;
+      el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 3500);
+    }
+
+    function escapeHtml(val) {
+      return String(val == null ? '' : val)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    async function loadAll() {
+      syncLinks();
+      const pRes = await fetch('/api/pstn/config', { headers: headers() });
+      if (pRes.status === 401) {
+        document.getElementById('passBar').style.display = 'block';
+        return;
+      }
+      document.getElementById('passBar').style.display = 'none';
+
+      if (pRes.ok) {
+        const p = await pRes.json();
+        const cliDisp = p.from_number || p.from_number_masked || 'configured';
+        if (p.public_base_url && !document.getElementById('pstnPublicUrl').value) {
+          document.getElementById('pstnPublicUrl').value = p.public_base_url;
+        }
+        document.getElementById('pstnStatusLabel').textContent = p.configured
+          ? `✅ ${(p.provider || 'pstn').toUpperCase()} (${cliDisp} · pool: ${p.pool_size || 1})`
+          : '⚠️ Not configured yet';
+      }
+
+      const payRes = await fetch('/api/admin/payment-config', { headers: headers() });
+      if (payRes.ok) {
+        const pay = await payRes.json();
+        document.getElementById('payGateSelect').value = pay.gate_mode;
+        document.getElementById('payFreeCap').value = pay.free_daily_calls_per_client;
+        if (pay.stripe_checkout_url) document.getElementById('stripeCheckoutInput').value = pay.stripe_checkout_url;
+        document.getElementById('kpiGate').textContent = `${pay.gate_mode.toUpperCase()} (${pay.stripe_mode})`;
+        document.getElementById('payConfigStatus').textContent = pay.stripe_configured
+          ? `Stripe key: ${pay.stripe_key_masked}`
+          : 'Stripe key: MPP HMAC ready';
+      }
+
+      const aRes = await fetch('/api/admin/analytics', { headers: headers() });
+      if (aRes.ok) {
+        const a = await aRes.json();
+        document.getElementById('kpiBots').textContent = a.totals.ai_bot_crawls;
+        document.getElementById('kpiReferrals').textContent = a.totals.organic_and_ai_referrals;
+        document.getElementById('kpiProtocols').textContent = a.totals.agent_protocol_calls;
+        document.getElementById('kpiQuests').textContent = a.totals.human_quests_started;
+
+        const bBody = document.querySelector('#breakdownTable tbody');
+        bBody.textContent = '';
+        const bEntries = [];
+        Object.entries(a.ai_bots_by_agent || {}).forEach(([k, v]) => bEntries.push(['🤖 ' + k, v]));
+        Object.entries(a.referrals_by_source || {}).forEach(([k, v]) => bEntries.push(['🔗 ' + k, v]));
+        Object.entries(a.protocol_activity || {}).forEach(([k, v]) => bEntries.push(['⚡ ' + k, v]));
+        if (!bEntries.length) {
+          const tr = document.createElement('tr');
+          const td = document.createElement('td');
+          td.colSpan = 2;
+          td.style.color = 'var(--subtle)';
+          td.textContent = 'No bot/referral/protocol hits yet.';
+          tr.appendChild(td);
+          bBody.appendChild(tr);
+        } else {
+          bEntries.forEach(([label, count]) => {
+            const tr = document.createElement('tr');
+            const td1 = document.createElement('td');
+            td1.textContent = label;
+            const td2 = document.createElement('td');
+            const st = document.createElement('strong');
+            st.textContent = String(count);
+            td2.appendChild(st);
+            tr.appendChild(td1);
+            tr.appendChild(td2);
+            bBody.appendChild(tr);
+          });
+        }
+
+        const eBody = document.querySelector('#eventsTable tbody');
+        eBody.textContent = '';
+        const recents = a.recent_events || [];
+        if (!recents.length) {
+          const tr = document.createElement('tr');
+          const td = document.createElement('td');
+          td.colSpan = 3;
+          td.style.color = 'var(--subtle)';
+          td.textContent = 'No events yet.';
+          tr.appendChild(td);
+          eBody.appendChild(tr);
+        } else {
+          recents.forEach((ev) => {
+            const tr = document.createElement('tr');
+            const tdTime = document.createElement('td');
+            tdTime.style.whiteSpace = 'nowrap';
+            tdTime.textContent = String(ev.ts || '').slice(11, 19);
+            const tdPath = document.createElement('td');
+            const codeEl = document.createElement('code');
+            codeEl.textContent = `${ev.method || ''} ${ev.path || ''}`;
+            tdPath.appendChild(codeEl);
+            const tdSig = document.createElement('td');
+            tdSig.textContent = ev.bot || ev.referral || ev.protocol || 'Web Visit';
+            tr.appendChild(tdTime);
+            tr.appendChild(tdPath);
+            tr.appendChild(tdSig);
+            eBody.appendChild(tr);
+          });
+        }
+      }
+
+      const qRes = await fetch('/api/quests', { headers: headers() });
+      if (qRes.ok) {
+        const qData = await qRes.json();
+        const wrap = document.getElementById('questLogsContainer');
+        if (!qData.quests || !qData.quests.length) {
+          wrap.textContent = 'No calls recorded in this server instance yet.';
+        } else {
+          wrap.textContent = '';
+          qData.quests.forEach((q) => {
+            const box = document.createElement('div');
+            box.className = 'quest-log-card';
+            const hdr = document.createElement('div');
+            const idStrong = document.createElement('strong');
+            idStrong.textContent = q.quest_id;
+            const modeSpan = document.createElement('span');
+            modeSpan.style.textTransform = 'uppercase';
+            modeSpan.style.fontWeight = '700';
+            modeSpan.textContent = ` · ${q.mode} · `;
+            const metaText = document.createTextNode(`${q.place_category} in ${q.locality}, ${q.city} — `);
+            const goalEm = document.createElement('em');
+            goalEm.textContent = q.user_goal;
+            hdr.appendChild(idStrong);
+            hdr.appendChild(modeSpan);
+            hdr.appendChild(metaText);
+            hdr.appendChild(goalEm);
+            box.appendChild(hdr);
+
+            (q.calls || []).forEach((c) => {
+              const item = document.createElement('div');
+              item.className = 'call-log-item';
+              const top = document.createElement('div');
+              top.style.fontWeight = '700';
+              top.textContent = `${c.name} (${c.phone_display}) — ${c.outcome} · ${c.duration_sec ? c.duration_sec.toFixed(1) + 's' : '0s'}`;
+              item.appendChild(top);
+
+              if (c.transcript && c.transcript.length) {
+                const tx = document.createElement('div');
+                tx.style.marginTop = '6px';
+                tx.style.color = 'var(--ink)';
+                c.transcript.forEach((t) => {
+                  const line = document.createElement('div');
+                  line.textContent = `[${String(t.speaker || '').toUpperCase()}] ${t.text || ''}`;
+                  tx.appendChild(line);
+                });
+                item.appendChild(tx);
+              }
+              if (c.audio_signed_url) {
+                const aud = document.createElement('audio');
+                aud.controls = true;
+                aud.preload = 'none';
+                aud.src = c.audio_signed_url;
+                item.appendChild(aud);
+              }
+              box.appendChild(item);
+            });
+            wrap.appendChild(box);
+          });
+        }
+      }
+    }
+
+    document.getElementById('admUnlockBtn').addEventListener('click', () => {
+      passcode = document.getElementById('admPassInput').value.trim();
+      sessionStorage.setItem('ringscout_passcode', passcode);
+      window.location.hash = `passcode=${encodeURIComponent(passcode)}`;
+      loadAll();
+    });
+
+    document.getElementById('refreshAllBtn').addEventListener('click', loadAll);
+
+    document.getElementById('savePstnBtn').addEventListener('click', async () => {
+      const poolRaw = document.getElementById('pstnPool').value.trim();
+      const from_numbers = poolRaw ? poolRaw.split(',').map((s) => s.trim()).filter(Boolean) : [];
+      const pubUrl = document.getElementById('pstnPublicUrl').value.trim();
+      const res = await fetch('/api/pstn/config', {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({
+          provider: document.getElementById('pstnProvider').value,
+          from_number: document.getElementById('pstnFrom').value.trim(),
+          from_numbers,
+          auth_id: document.getElementById('pstnAuthId').value.trim(),
+          auth_token: document.getElementById('pstnToken').value.trim(),
+          public_base_url: pubUrl || null
+        })
+      });
+      const d = await res.json();
+      if (!res.ok) { alert(d.detail || 'Error saving carrier'); return; }
+      toast(`Saved ${d.provider.toUpperCase()} carrier (${d.pool_size} DIDs in rotation pool).`);
+      loadAll();
+    });
+
+    document.getElementById('selfTestBtn').addEventListener('click', async () => {
+      const my_phone = document.getElementById('selfTestPhone').value.trim();
+      if (!my_phone) return;
+      const res = await fetch('/api/pstn/test-call', {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({
+          my_phone,
+          place_category: 'hotel',
+          user_goal: 'Deluxe room tonight, check 10 AM early check-in and direct phone tariff in ₹',
+          preferred_tone: 'polite_indian_english',
+          voice_name: 'Puck'
+        })
+      });
+      const d = await res.json();
+      if (!res.ok) { alert(d.detail || 'Self-test failed'); return; }
+      toast(`Ringing ${my_phone} (Quest ${d.quest.quest_id})! Refresh in 30s to listen to the .wav.`);
+    });
+
+    document.getElementById('savePayConfigBtn').addEventListener('click', async () => {
+      const skVal = document.getElementById('stripeSecretInput').value.trim();
+      const payload = {
+        gate_mode: document.getElementById('payGateSelect').value,
+        free_daily_calls_per_client: parseInt(document.getElementById('payFreeCap').value, 10) || 10,
+        stripe_checkout_url: document.getElementById('stripeCheckoutInput').value.trim()
+      };
+      if (skVal) payload.stripe_secret_key = skVal;
+      const res = await fetch('/api/admin/payment-config', {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify(payload)
+      });
+      const d = await res.json();
+      if (!res.ok) { alert(d.detail || 'Failed to update payment config'); return; }
+      document.getElementById('stripeSecretInput').value = '';
+      toast(`Updated Payment Gate to ${d.gate_mode.toUpperCase()} (Stripe: ${d.stripe_mode}).`);
+      loadAll();
+    });
+
+    loadAll();
+  </script>
+</body>
+</html>

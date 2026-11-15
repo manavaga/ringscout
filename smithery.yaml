@@ -1,0 +1,18 @@
+# Smithery.ai MCP Server Configuration (https://smithery.ai)
+startCommand:
+  type: http
+  configSchema:
+    type: object
+    properties:
+      ringscoutEndpoint:
+        type: string
+        title: RingScout MCP Endpoint
+        description: Remote Streamable HTTP MCP URL for RingScout
+        default: "https://ringscout-hom7ntreuq-uc.a.run.app/mcp"
+      stripePaymentToken:
+        type: string
+        title: Optional Stripe Shared Payment Token (Phase B)
+        description: Optional Stripe SPT/PaymentMethod token when paid tier is enabled
+    required: []
+  exampleConfig:
+    ringscoutEndpoint: "https://ringscout-hom7ntreuq-uc.a.run.app/mcp"

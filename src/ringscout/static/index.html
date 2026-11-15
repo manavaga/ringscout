@@ -1,0 +1,1342 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RingScout — Parallel AI Voice Calls for Google Maps Places</title>
+  <meta name="description" content="Find any spa, salon, hotel, restaurant, MRI lab, or local business on Google Maps — or add a specific place — and call them in parallel in natural Indian English or Hindi." />
+  <link rel="canonical" href="https://ringscout-hom7ntreuq-uc.a.run.app/" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "RingScout",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Web, MCP, Google A2A",
+    "description": "Parallel AI voice agent that calls real open Google Maps businesses (+91) in natural Indian English and Hindi to confirm live availability, appointments, and INR pricing with 24kHz WAV proof."
+  }
+  </script>
+
+  <style>
+    :root {
+      --bg: #090c10;
+      --surface: #11161d;
+      --surface-2: #161d26;
+      --surface-hover: #1b2430;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.16);
+      --ink: #f1f5f9;
+      --ink-muted: #94a3b8;
+      --ink-subtle: #64748b;
+      --accent: #10b981;
+      --accent-hover: #059669;
+      --accent-soft: rgba(16, 185, 129, 0.12);
+      --cyan: #38bdf8;
+      --cyan-soft: rgba(56, 189, 248, 0.12);
+      --amber: #f59e0b;
+      --danger: #ef4444;
+      --radius-lg: 16px;
+      --radius-md: 10px;
+      --radius-sm: 8px;
+      --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+      --sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+    }
+
+    .topbar {
+      border-bottom: 1px solid var(--border);
+      background: rgba(9, 12, 16, 0.85);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 40;
+    }
+    .topbar-inner {
+      max-width: 980px;
+      margin: 0 auto;
+      height: 58px;
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--ink);
+      font-weight: 700;
+      font-size: 1.02rem;
+      letter-spacing: -0.02em;
+    }
+    .brand-mark {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      background: var(--surface-2);
+      border: 1px solid var(--border-strong);
+      display: grid;
+      place-items: center;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .status-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-family: var(--mono);
+      font-size: 0.74rem;
+      color: var(--ink-muted);
+      padding: 4px 10px;
+      border-radius: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+    }
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .nav-link {
+      text-decoration: none;
+      color: var(--ink-muted);
+      font-size: 0.84rem;
+      font-weight: 500;
+      padding: 6px 11px;
+      border-radius: var(--radius-sm);
+      transition: color 0.15s, background 0.15s;
+    }
+    .nav-link:hover {
+      color: var(--ink);
+      background: var(--surface);
+    }
+
+    .main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 40px 20px 88px;
+    }
+
+    .hero {
+      margin-bottom: 26px;
+    }
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: clamp(1.75rem, 3.4vw, 2.35rem);
+      font-weight: 700;
+      letter-spacing: -0.035em;
+      line-height: 1.15;
+      color: var(--ink);
+    }
+    .hero p {
+      margin: 0;
+      color: var(--ink-muted);
+      font-size: 0.96rem;
+      line-height: 1.5;
+      max-width: 640px;
+    }
+
+    /* Unified Command Card */
+    .command-card {
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-lg);
+      padding: 18px;
+      box-shadow: 0 20px 44px rgba(0, 0, 0, 0.35);
+    }
+
+    .intent-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+    .intent-tab {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--ink-muted);
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+      font-family: var(--sans);
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .intent-tab:hover {
+      color: var(--ink);
+      border-color: var(--border-strong);
+    }
+    .intent-tab.active {
+      background: var(--ink);
+      color: var(--bg);
+      border-color: var(--ink);
+      font-weight: 600;
+    }
+
+    .prompt-input {
+      width: 100%;
+      min-height: 68px;
+      resize: vertical;
+      background: var(--bg);
+      color: var(--ink);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 13px 14px;
+      font-family: var(--sans);
+      font-size: 0.98rem;
+      line-height: 1.45;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .prompt-input:focus {
+      border-color: rgba(255, 255, 255, 0.32);
+    }
+
+    .quick-examples {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 10px 0 14px;
+    }
+    .example-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--ink-subtle);
+      font-family: var(--sans);
+      font-size: 0.76rem;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+      text-align: left;
+    }
+    .example-btn:hover {
+      color: var(--ink-muted);
+      border-color: var(--border-strong);
+    }
+
+    .controls-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .geo-group {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+    }
+    .ctrl-select, .ctrl-input {
+      height: 38px;
+      background: var(--surface-2);
+      color: var(--ink);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0 11px;
+      font-family: var(--sans);
+      font-size: 0.84rem;
+      outline: none;
+    }
+    .ctrl-select:focus, .ctrl-input:focus {
+      border-color: var(--border-strong);
+    }
+
+    .custom-geo-row {
+      display: none;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .custom-geo-row.visible {
+      display: flex;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      height: 38px;
+      padding: 0 18px;
+      border-radius: var(--radius-sm);
+      border: 1px solid transparent;
+      font-family: var(--sans);
+      font-size: 0.86rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary {
+      background: var(--ink);
+      color: var(--bg);
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: #ffffff;
+    }
+    .btn-call {
+      background: var(--accent);
+      color: #04130d;
+      height: 42px;
+      padding: 0 22px;
+      font-weight: 700;
+    }
+    .btn-call:hover:not(:disabled) {
+      background: #34d399;
+    }
+    .btn-ghost {
+      background: var(--surface-2);
+      color: var(--ink-muted);
+      border-color: var(--border);
+    }
+    .btn-ghost:hover:not(:disabled) {
+      color: var(--ink);
+      border-color: var(--border-strong);
+    }
+    .btn-danger {
+      background: rgba(239, 68, 68, 0.14);
+      color: #fca5a5;
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+
+    .notice {
+      display: none;
+      margin-top: 14px;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 0.84rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--ink-muted);
+    }
+    .notice.visible { display: block; }
+    .notice.error {
+      border-color: rgba(239, 68, 68, 0.35);
+      color: #fca5a5;
+    }
+
+    /* Step 2: Places & Add Specific Place */
+    .places-panel {
+      display: none;
+      margin-top: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    .places-panel.visible { display: block; }
+
+    .panel-header {
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .panel-title {
+      font-size: 0.96rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .panel-meta {
+      font-size: 0.78rem;
+      color: var(--ink-subtle);
+      font-family: var(--mono);
+    }
+
+    /* Add Specific Place Bar */
+    .add-place-bar {
+      padding: 12px 18px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .add-place-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .add-place-input {
+      flex: 1;
+      min-width: 220px;
+      height: 36px;
+      background: var(--surface);
+      color: var(--ink);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0 12px;
+      font-family: var(--sans);
+      font-size: 0.84rem;
+      outline: none;
+    }
+    .add-place-input:focus {
+      border-color: var(--border-strong);
+    }
+    .manual-phone-link {
+      font-size: 0.76rem;
+      color: var(--ink-subtle);
+      background: none;
+      border: 0;
+      cursor: pointer;
+      padding: 0 4px;
+      text-decoration: underline;
+    }
+    .manual-phone-link:hover { color: var(--ink-muted); }
+
+    .place-list {
+      divide-y: 1px solid var(--border);
+    }
+    .place-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 13px 18px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .place-item:last-child { border-bottom: 0; }
+    .place-item:hover { background: var(--surface-hover); }
+    .place-item input[type="checkbox"] {
+      margin-top: 3px;
+      width: 16px;
+      height: 16px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    .place-body { flex: 1; min-width: 0; }
+    .place-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .place-name {
+      font-weight: 600;
+      font-size: 0.92rem;
+      color: var(--ink);
+    }
+    .place-rating {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--amber);
+      white-space: nowrap;
+    }
+    .place-sub {
+      margin-top: 4px;
+      font-size: 0.8rem;
+      color: var(--ink-muted);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+    .mono-phone {
+      font-family: var(--mono);
+      font-size: 0.76rem;
+      color: var(--ink);
+    }
+    .tag {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: var(--surface-2);
+      color: var(--ink-muted);
+      border: 1px solid var(--border);
+    }
+    .tag-open {
+      color: var(--accent);
+      background: var(--accent-soft);
+      border-color: rgba(16, 185, 129, 0.2);
+    }
+
+    .dispatch-footer {
+      padding: 14px 18px;
+      background: var(--surface-2);
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .mode-switch {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+      color: var(--ink-muted);
+    }
+
+    /* Step 3: Unified Live Call Radar */
+    .calls-section {
+      display: none;
+      margin-top: 26px;
+    }
+    .calls-section.visible { display: block; }
+    .calls-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      gap: 10px;
+    }
+    .calls-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 14px;
+    }
+    .call-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+    }
+    .call-card.best-match {
+      border-color: rgba(16, 185, 129, 0.45);
+    }
+    .call-state-pill {
+      font-family: var(--mono);
+      font-size: 0.69rem;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 5px;
+      background: var(--surface-2);
+      color: var(--ink-muted);
+      border: 1px solid var(--border);
+    }
+    .call-state-pill.live {
+      color: var(--cyan);
+      background: var(--cyan-soft);
+      border-color: rgba(56, 189, 248, 0.25);
+    }
+    .call-state-pill.done {
+      color: var(--accent);
+      background: var(--accent-soft);
+      border-color: rgba(16, 185, 129, 0.25);
+    }
+    .quote-highlight {
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .quote-price {
+      font-family: var(--mono);
+      font-size: 1.18rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .transcript-feed {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px;
+      max-height: 185px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      font-size: 0.81rem;
+      line-height: 1.42;
+    }
+    .t-line { color: var(--ink-muted); }
+    .t-line strong {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      margin-right: 6px;
+      color: var(--ink-subtle);
+    }
+    .t-line.agent strong { color: var(--cyan); }
+    .t-line.shop strong { color: var(--accent); }
+    audio {
+      width: 100%;
+      height: 34px;
+    }
+
+    @media (max-width: 640px) {
+      .topbar-inner { height: auto; padding: 12px 16px; flex-wrap: wrap; }
+      .controls-bar { flex-direction: column; align-items: stretch; }
+      .btn-primary { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <a href="/" class="brand">
+          <span class="brand-mark">RS</span>
+          <span>RingScout</span>
+        </a>
+        <span class="status-indicator" id="pstnStatusBadge">
+          <span class="dot"></span>
+          <span id="pstnStatusText">Live +91 Voice</span>
+        </span>
+      </div>
+      <nav class="nav-links">
+        <a href="/dashboard" class="nav-link">Live Dashboard</a>
+        <a href="/developers" class="nav-link">MCP &amp; Agents</a>
+        <a href="/admin" class="nav-link">Admin</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main">
+    <section class="hero">
+      <h1>Call local places in parallel. Get live answers.</h1>
+      <p>Search any spa, salon, hotel, restaurant, or clinic on Google Maps — or add a specific place by name — and let RingScout ask on the phone for you.</p>
+    </section>
+
+    <section class="command-card" aria-label="Voice Search Composer">
+      <div class="intent-bar" id="intentBar">
+        <button type="button" class="intent-tab active" data-cat="custom">Auto-Detect</button>
+        <button type="button" class="intent-tab" data-cat="spa">Spa &amp; Massage</button>
+        <button type="button" class="intent-tab" data-cat="salon">Hair &amp; Salon</button>
+        <button type="button" class="intent-tab" data-cat="hotel">Hotels</button>
+        <button type="button" class="intent-tab" data-cat="restaurant">Dining</button>
+        <button type="button" class="intent-tab" data-cat="diagnostics">MRI &amp; Labs</button>
+        <button type="button" class="intent-tab" data-cat="clinic">Clinics</button>
+        <button type="button" class="intent-tab" data-cat="petrol">Fuel &amp; EV</button>
+        <button type="button" class="intent-tab" data-cat="pharmacy">Pharmacy</button>
+      </div>
+
+      <textarea id="purposeInput" class="prompt-input" placeholder="What should we find &amp; ask? e.g. 60-min deep tissue spa slot today at 7 PM and price in ₹">60-minute deep tissue body massage spa slot today at 7 PM and confirm walk-in rate in ₹</textarea>
+
+      <div class="quick-examples" id="quickExamples"></div>
+
+      <div class="controls-bar">
+        <div class="geo-group">
+          <select id="citySelect" class="ctrl-select" aria-label="City">
+            <option value="Mumbai" selected>Mumbai</option>
+            <option value="Bengaluru">Bengaluru</option>
+            <option value="Delhi NCR">Delhi NCR</option>
+            <option value="Hyderabad">Hyderabad</option>
+            <option value="Pune">Pune</option>
+            <option value="Chennai">Chennai</option>
+            <option value="Kolkata">Kolkata</option>
+            <option value="Ahmedabad">Ahmedabad</option>
+            <option value="Jaipur">Jaipur</option>
+            <option value="Goa">Goa</option>
+            <option value="__custom__">+ Other City…</option>
+          </select>
+
+          <select id="localitySelect" class="ctrl-select" aria-label="Neighbourhood">
+            <option value="Bandra West">Bandra West</option>
+            <option value="Bandra East">Bandra East / BKC</option>
+          </select>
+
+          <select id="toneSelect" class="ctrl-select" aria-label="Spoken Language">
+            <option value="polite_indian_english">Indian English (en-IN)</option>
+            <option value="conversational_hinglish">Hinglish (en-IN / hi-IN)</option>
+            <option value="natural_hindi">Hindi (hi-IN)</option>
+          </select>
+
+          <input id="callerNameInput" class="ctrl-input" type="text" placeholder="Your first name (opt)" style="width:155px;" />
+        </div>
+
+        <button type="button" class="btn btn-primary" id="discoverBtn">Find Places →</button>
+      </div>
+
+      <div class="custom-geo-row" id="customGeoRow">
+        <input id="customCityInput" class="ctrl-input" type="text" placeholder="City name (e.g. Kochi)" style="display:none;flex:1;" />
+        <input id="customAreaInput" class="ctrl-input" type="text" placeholder="Area / neighbourhood (e.g. Carter Road, Sector 29)" style="display:none;flex:2;" />
+      </div>
+    </section>
+
+    <div id="noticeBox" class="notice"></div>
+
+    <!-- Step 2: Clean Discovered Places + Inline "+ Add Specific Place" -->
+    <section class="places-panel" id="placesPanel">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title" id="placesHeading">Matching Open Places</div>
+          <div class="panel-meta" id="placesMeta">Google Maps verified +91 lines</div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button type="button" class="btn btn-ghost" id="selectTop3Btn" style="height:32px;padding:0 11px;font-size:0.76rem;">Top 3</button>
+          <button type="button" class="btn btn-ghost" id="clearSelBtn" style="height:32px;padding:0 11px;font-size:0.76rem;">Clear</button>
+        </div>
+      </div>
+
+      <div class="add-place-bar">
+        <div class="add-place-row">
+          <input id="addPlaceNameInput" class="add-place-input" type="text" placeholder="+ Add a specific spa, salon, hotel, or business (e.g. Four Fountains Spa, BBLUNT, Taj Lands End)…" />
+          <input id="addPlacePhoneInput" class="add-place-input" type="text" placeholder="+91 business phone" style="display:none;max-width:190px;font-family:var(--mono);" />
+          <button type="button" class="btn btn-ghost" id="addPlaceBtn" style="height:36px;padding:0 14px;">+ Add Place</button>
+          <button type="button" class="manual-phone-link" id="toggleManualPhoneBtn">or enter +91 number</button>
+        </div>
+      </div>
+
+      <div class="place-list" id="placesList"></div>
+
+      <div class="dispatch-footer">
+        <div class="mode-switch">
+          <span>Mode:</span>
+          <select id="callModeSelect" class="ctrl-select" style="height:34px;font-size:0.79rem;">
+            <option value="live_pstn" id="optLivePstn" selected>Live +91 Phone Calls (PSTN)</option>
+            <option value="hinglish_swarm">Instant AI Voice Preview (Sandbox)</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button type="button" class="btn btn-danger" id="stopCallsBtn" style="display:none;">Stop Calls</button>
+          <button type="button" class="btn btn-call" id="startCallsBtn">Call Selected Places</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 3: Unified Live Call Cards -->
+    <section class="calls-section" id="callsSection">
+      <div class="calls-header">
+        <div class="panel-title">Live Call Feed</div>
+        <div class="panel-meta" id="questStatusMeta"></div>
+      </div>
+      <div class="calls-grid" id="callsGrid"></div>
+    </section>
+  </main>
+
+  <script>
+    const EXAMPLES = {
+      custom: [
+        '60-minute deep tissue body massage spa slot today at 7 PM and walk-in rate in ₹',
+        'Haircut and blow-dry appointment today at 6 PM and price in ₹',
+        'Double room tonight with 10 AM early check-in and direct phone tariff in ₹'
+      ],
+      spa: [
+        '60-minute deep tissue or Thai body massage slot today at 7 PM and price in ₹',
+        'Couple spa therapy room available this evening and package rate in ₹',
+        'Foot reflexology 45-min walk-in slot right now and charges in ₹'
+      ],
+      salon: [
+        'Haircut and blow-dry appointment slot today at 6 PM and stylist rate in ₹',
+        'Men haircut + beard trim walk-in availability right now and price in ₹',
+        'Keratin / hair spa appointment tomorrow morning and starting price in ₹'
+      ],
+      hotel: [
+        'Deluxe double room tonight, ask if 10 AM early check-in is possible and direct tariff in ₹',
+        '2 rooms for this weekend with breakfast included and direct phone rate in ₹'
+      ],
+      restaurant: [
+        'Table for 4 tonight at 8:30 PM with outdoor seating and live wait time',
+        'Walk-in table for 2 right now and ask if Jain options are available'
+      ],
+      diagnostics: [
+        '1.5T Brain MRI plain scan slot open today and walk-in cash price in ₹',
+        'Ultrasound / CT scan appointment today and reporting turnaround time'
+      ],
+      clinic: [
+        'Doctor OPD consultation slot today evening and consultation fee in ₹',
+        'Same-day dental checkup slot today and consultation charge in ₹'
+      ],
+      petrol: [
+        'Check if XP95 petrol is in stock and nitrogen tyre air is working right now',
+        'Check if CCS2 fast EV charger is free and working right now'
+      ],
+      pharmacy: [
+        'Augmentin 625 Duo strip of 10 in stock right now and price in ₹',
+        'Shelcal 500 and Dolo 650 available for immediate pickup'
+      ]
+    };
+
+    let selectedCategory = 'custom';
+    let cityAreasMap = {};
+    let discoveredShops = [];
+    let activeQuestId = null;
+    let activeEventSource = null;
+    let pstnReady = false;
+
+    const hashParams = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+    let passcode = hashParams.get('passcode') || sessionStorage.getItem('rs_passcode') || '';
+    if (passcode) sessionStorage.setItem('rs_passcode', passcode);
+
+    function apiHeaders() {
+      const h = { 'Content-Type': 'application/json' };
+      if (passcode) h['X-RingScout-Passcode'] = passcode;
+      return h;
+    }
+
+    function showNotice(msg, isError = false) {
+      const el = document.getElementById('noticeBox');
+      if (!msg) {
+        el.className = 'notice';
+        el.textContent = '';
+        return;
+      }
+      el.className = isError ? 'notice visible error' : 'notice visible';
+      el.textContent = msg;
+    }
+
+    function renderExamples(cat) {
+      const wrap = document.getElementById('quickExamples');
+      wrap.textContent = '';
+      (EXAMPLES[cat] || EXAMPLES.custom).forEach((txt) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'example-btn';
+        b.textContent = txt;
+        b.addEventListener('click', () => {
+          document.getElementById('purposeInput').value = txt;
+        });
+        wrap.appendChild(b);
+      });
+    }
+
+    function getCity() {
+      const v = document.getElementById('citySelect').value;
+      return v === '__custom__' ? (document.getElementById('customCityInput').value.trim() || 'Mumbai') : v;
+    }
+
+    function getLocality() {
+      const cityVal = document.getElementById('citySelect').value;
+      const locVal = document.getElementById('localitySelect').value;
+      if (cityVal === '__custom__' || locVal === '__custom__') {
+        return document.getElementById('customAreaInput').value.trim() || 'Central';
+      }
+      return locVal || 'Bandra West';
+    }
+
+    function populateLocalities(city) {
+      const sel = document.getElementById('localitySelect');
+      const customRow = document.getElementById('customGeoRow');
+      const cCity = document.getElementById('customCityInput');
+      const cArea = document.getElementById('customAreaInput');
+
+      if (city === '__custom__') {
+        sel.style.display = 'none';
+        customRow.classList.add('visible');
+        cCity.style.display = 'block';
+        cArea.style.display = 'block';
+        return;
+      }
+      sel.style.display = '';
+      cCity.style.display = 'none';
+      cArea.style.display = 'none';
+      customRow.classList.remove('visible');
+
+      const areas = cityAreasMap[city] || [];
+      sel.textContent = '';
+      areas.forEach((a, i) => {
+        const opt = document.createElement('option');
+        opt.value = a.name;
+        opt.textContent = a.name;
+        if (i === 0) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      const customOpt = document.createElement('option');
+      customOpt.value = '__custom__';
+      customOpt.textContent = '+ Type Another Area…';
+      sel.appendChild(customOpt);
+    }
+
+    async function init() {
+      renderExamples('custom');
+      try {
+        const [locRes, healthRes] = await Promise.all([
+          fetch('/api/locations'),
+          fetch('/api/health')
+        ]);
+        if (locRes.ok) {
+          const locData = await locRes.json();
+          cityAreasMap = locData.cities || {};
+          populateLocalities(document.getElementById('citySelect').value);
+        }
+        if (healthRes.ok) {
+          const h = await healthRes.json();
+          pstnReady = Boolean(h.live_pstn_configured && h.public_wss_ready);
+          const statusTxt = document.getElementById('pstnStatusText');
+          const optLive = document.getElementById('optLivePstn');
+          const modeSel = document.getElementById('callModeSelect');
+          if (pstnReady) {
+            const prov = (h.live_pstn_provider || 'PSTN').toUpperCase();
+            statusTxt.textContent = `${prov} +91 Ready`;
+            optLive.textContent = `Live +91 Phone Calls (${prov})`;
+            modeSel.value = 'live_pstn';
+          } else {
+            statusTxt.textContent = '24kHz Voice Ready';
+            modeSel.value = 'hinglish_swarm';
+          }
+        }
+      } catch (e) {
+        console.warn('Init warning:', e);
+      }
+    }
+
+    function syncSelectedButtonLabel() {
+      const checked = document.querySelectorAll('#placesList input[type="checkbox"]:checked').length;
+      const btn = document.getElementById('startCallsBtn');
+      btn.textContent = checked > 0 ? `Call ${checked} Selected Place${checked > 1 ? 's' : ''}` : 'Select Places to Call';
+    }
+
+    function renderPlacesList() {
+      const panel = document.getElementById('placesPanel');
+      const list = document.getElementById('placesList');
+      list.textContent = '';
+      if (!discoveredShops.length) {
+        panel.classList.add('visible');
+        document.getElementById('placesHeading').textContent = `0 matches in ${getLocality()} — add any specific place below`;
+        syncSelectedButtonLabel();
+        return;
+      }
+      panel.classList.add('visible');
+      document.getElementById('placesHeading').textContent = `${discoveredShops.length} Places in ${getLocality()}, ${getCity()}`;
+
+      discoveredShops.forEach((shop, idx) => {
+        const row = document.createElement('label');
+        row.className = 'place-item';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = shop._checked !== undefined ? shop._checked : (idx < 3);
+        cb.dataset.idx = String(idx);
+        cb.addEventListener('change', () => {
+          shop._checked = cb.checked;
+          syncSelectedButtonLabel();
+        });
+
+        const body = document.createElement('div');
+        body.className = 'place-body';
+
+        const top = document.createElement('div');
+        top.className = 'place-top';
+        const nm = document.createElement('span');
+        nm.className = 'place-name';
+        nm.textContent = shop.name;
+        top.appendChild(nm);
+
+        if (shop.rating) {
+          const rt = document.createElement('span');
+          rt.className = 'place-rating';
+          rt.textContent = `★ ${shop.rating}`;
+          top.appendChild(rt);
+        }
+        body.appendChild(top);
+
+        const sub = document.createElement('div');
+        sub.className = 'place-sub';
+
+        const openTag = document.createElement('span');
+        openTag.className = 'tag tag-open';
+        openTag.textContent = shop.open_status || 'OPEN NOW';
+        sub.appendChild(openTag);
+
+        if (shop.category) {
+          const catTag = document.createElement('span');
+          catTag.className = 'tag';
+          catTag.textContent = shop.category;
+          sub.appendChild(catTag);
+        }
+
+        const ph = document.createElement('span');
+        ph.className = 'mono-phone';
+        ph.textContent = shop.phone_display;
+        sub.appendChild(ph);
+
+        if (shop.address) {
+          const addr = document.createElement('span');
+          addr.textContent = shop.address;
+          sub.appendChild(addr);
+        }
+
+        body.appendChild(sub);
+        row.appendChild(cb);
+        row.appendChild(body);
+        list.appendChild(row);
+      });
+
+      syncSelectedButtonLabel();
+    }
+
+    async function handleDiscover() {
+      const purpose = document.getElementById('purposeInput').value.trim();
+      if (!purpose) {
+        showNotice('Enter what you want to find and ask first.', true);
+        return;
+      }
+      showNotice('');
+      const btn = document.getElementById('discoverBtn');
+      btn.disabled = true;
+      btn.textContent = 'Searching Maps…';
+
+      try {
+        const res = await fetch('/api/discover', {
+          method: 'POST',
+          headers: apiHeaders(),
+          body: JSON.stringify({
+            purpose,
+            place_category: selectedCategory,
+            city: getCity(),
+            locality: getLocality(),
+            max_shops: 8
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showNotice(data.detail || 'Search failed.', true);
+          return;
+        }
+        discoveredShops = (data.shops || []).map((s, i) => ({ ...s, _checked: i < 3 }));
+        document.getElementById('placesMeta').textContent = `${data.place_category.toUpperCase()} · Google Maps Grounded`;
+        renderPlacesList();
+      } catch (err) {
+        showNotice('Network error: ' + err.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Find Places →';
+      }
+    }
+
+    async function handleAddSpecificPlace() {
+      const nameInput = document.getElementById('addPlaceNameInput');
+      const phoneInput = document.getElementById('addPlacePhoneInput');
+      const placeName = nameInput.value.trim();
+      const phoneVal = phoneInput.style.display !== 'none' ? phoneInput.value.trim() : '';
+      if (!placeName) {
+        showNotice('Type the name of the specific spa, salon, hotel, or place you want to add.', true);
+        return;
+      }
+      const btn = document.getElementById('addPlaceBtn');
+      btn.disabled = true;
+      btn.textContent = 'Looking up…';
+      showNotice('');
+
+      try {
+        const res = await fetch('/api/places/add', {
+          method: 'POST',
+          headers: apiHeaders(),
+          body: JSON.stringify({
+            place_name: placeName,
+            phone: phoneVal,
+            city: getCity(),
+            locality: getLocality(),
+            place_category: selectedCategory
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showNotice(data.detail || 'Could not add place.', true);
+          return;
+        }
+        const matches = data.shops || [];
+        if (!matches.length) {
+          showNotice(`No direct +91 listing found on Google Maps for "${placeName}" — click "or enter +91 number" to add its phone directly.`, true);
+          return;
+        }
+        const best = { ...matches[0], _checked: true };
+        discoveredShops = [
+          best,
+          ...discoveredShops.filter((s) => s.phone_e164 !== best.phone_e164)
+        ];
+        nameInput.value = '';
+        phoneInput.value = '';
+        renderPlacesList();
+        showNotice(`Added "${best.name}" (${best.phone_display}) to your call list.`);
+      } catch (err) {
+        showNotice('Add place error: ' + err.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '+ Add Place';
+      }
+    }
+
+    function renderCallsState(quest, rankedQuotes) {
+      const sec = document.getElementById('callsSection');
+      sec.classList.add('visible');
+      document.getElementById('questStatusMeta').textContent =
+        `${quest.quest_id} · ${quest.mode === 'live_pstn' ? 'LIVE +91 PSTN' : 'SANDBOX PREVIEW'} · ${quest.status.toUpperCase()}`;
+      document.getElementById('stopCallsBtn').style.display = quest.status === 'running' ? 'inline-flex' : 'none';
+
+      const grid = document.getElementById('callsGrid');
+      grid.textContent = '';
+      const ordered = (rankedQuotes && rankedQuotes.length) ? rankedQuotes : Object.values(quest.calls || {});
+      let topMarked = false;
+
+      ordered.forEach((call) => {
+        const q = call.quote || {};
+        const isAvailable = q.in_stock === true;
+        const isBest = isAvailable && !topMarked;
+        if (isBest) topMarked = true;
+
+        const card = document.createElement('div');
+        card.className = isBest ? 'call-card best-match' : 'call-card';
+
+        const top = document.createElement('div');
+        top.className = 'place-top';
+        const nm = document.createElement('div');
+        nm.className = 'place-name';
+        nm.textContent = call.shop.name;
+        const pill = document.createElement('span');
+        const done = ['completed', 'skipped', 'stopped', 'failed'].includes(call.status);
+        const live = ['ringing', 'in_progress', 'ivr_menu'].includes(call.status);
+        pill.className = `call-state-pill ${done ? 'done' : (live ? 'live' : '')}`;
+        pill.textContent = call.dtmf_sent && call.dtmf_sent.length
+          ? `${call.status.replace('_', ' ')} · DTMF ${call.dtmf_sent.join(',')}`
+          : call.status.replace('_', ' ');
+        top.appendChild(nm);
+        top.appendChild(pill);
+        card.appendChild(top);
+
+        const meta = document.createElement('div');
+        meta.className = 'panel-meta';
+        const dur = call.duration_sec ? `${call.duration_sec.toFixed(1)}s` : (call.status === 'ringing' ? 'ringing +91…' : 'queued');
+        const cid = call.twilio_call_sid ? ` · ID ${String(call.twilio_call_sid).slice(0, 8)}` : '';
+        meta.textContent = `${call.shop.phone_display} · ${dur}${cid}`;
+        card.appendChild(meta);
+
+        if (q.availability_label || q.price_display || q.notes) {
+          const qbox = document.createElement('div');
+          qbox.className = 'quote-highlight';
+          const left = document.createElement('div');
+          left.style.fontSize = '0.8rem';
+          left.textContent = q.availability_label || (isAvailable ? 'Available' : 'Checked');
+          if (q.eta_or_slot) {
+            const sl = document.createElement('div');
+            sl.style.fontSize = '0.73rem';
+            sl.style.color = 'var(--ink-muted)';
+            sl.textContent = q.eta_or_slot;
+            left.appendChild(sl);
+          }
+          const right = document.createElement('div');
+          right.className = 'quote-price';
+          right.textContent = q.price_display || (isAvailable ? 'Open' : '—');
+          qbox.appendChild(left);
+          qbox.appendChild(right);
+          card.appendChild(qbox);
+        }
+
+        const feed = document.createElement('div');
+        feed.className = 'transcript-feed';
+        const turns = call.transcript || [];
+        if (!turns.length) {
+          const waitLine = document.createElement('div');
+          waitLine.className = 't-line';
+          waitLine.textContent = 'Connecting live line…';
+          feed.appendChild(waitLine);
+        } else {
+          turns.forEach((t) => {
+            const line = document.createElement('div');
+            line.className = `t-line ${t.speaker === 'agent' ? 'agent' : (t.speaker === 'shopkeeper' ? 'shop' : '')}`;
+            const tag = document.createElement('strong');
+            tag.textContent = t.speaker === 'agent' ? 'RingScout' : (t.speaker === 'system' ? 'Telecom' : 'Desk');
+            line.appendChild(tag);
+            line.appendChild(document.createTextNode(t.text));
+            feed.appendChild(line);
+          });
+        }
+        card.appendChild(feed);
+
+        if (call.audio_url) {
+          const aud = document.createElement('audio');
+          aud.controls = true;
+          aud.preload = 'metadata';
+          aud.src = passcode
+            ? `${call.audio_url}${call.audio_url.includes('?') ? '&' : '?'}passcode=${encodeURIComponent(passcode)}`
+            : call.audio_url;
+          card.appendChild(aud);
+        }
+
+        grid.appendChild(card);
+      });
+    }
+
+    async function handleStartCalls() {
+      const chosen = [];
+      document.querySelectorAll('#placesList input[type="checkbox"]:checked').forEach((cb) => {
+        const s = discoveredShops[parseInt(cb.dataset.idx, 10)];
+        if (s) {
+          const clean = { ...s };
+          delete clean._checked;
+          chosen.push(clean);
+        }
+      });
+      if (!chosen.length) {
+        showNotice('Check at least one place in the list to call.', true);
+        return;
+      }
+
+      const mode = document.getElementById('callModeSelect').value;
+      const btn = document.getElementById('startCallsBtn');
+      btn.disabled = true;
+      btn.textContent = 'Starting Calls…';
+      showNotice('');
+
+      try {
+        const res = await fetch('/api/quests', {
+          method: 'POST',
+          headers: apiHeaders(),
+          body: JSON.stringify({
+            user_goal: document.getElementById('purposeInput').value.trim(),
+            place_category: selectedCategory,
+            caller_name: document.getElementById('callerNameInput').value.trim(),
+            city: getCity(),
+            locality: getLocality(),
+            preferred_tone: document.getElementById('toneSelect').value,
+            voice_name: 'Puck',
+            mode,
+            origin_channel: 'web_consumer',
+            caller_agent: 'Consumer Web UI',
+            shops: chosen.slice(0, 6)
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showNotice(data.detail || 'Could not start calls.', true);
+          return;
+        }
+        activeQuestId = data.quest.quest_id;
+        renderCallsState(data.quest, data.ranked_quotes);
+        document.getElementById('callsSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        subscribeEvents(activeQuestId);
+      } catch (err) {
+        showNotice('Call dispatch error: ' + err.message, true);
+      } finally {
+        btn.disabled = false;
+        syncSelectedButtonLabel();
+      }
+    }
+
+    function subscribeEvents(questId) {
+      if (activeEventSource) activeEventSource.close();
+      const q = passcode ? `?passcode=${encodeURIComponent(passcode)}` : '';
+      const es = new EventSource(`/api/quests/${questId}/events${q}`);
+      activeEventSource = es;
+
+      const refresh = async () => {
+        const r = await fetch(`/api/quests/${questId}`, { headers: apiHeaders() });
+        if (r.ok) {
+          const d = await r.json();
+          renderCallsState(d.quest, d.ranked_quotes);
+        }
+      };
+
+      es.addEventListener('snapshot', (e) => {
+        const d = JSON.parse(e.data);
+        renderCallsState(d.quest, d.ranked_quotes);
+      });
+      es.addEventListener('call_update', refresh);
+      es.addEventListener('transcript', refresh);
+      es.addEventListener('quest_complete', () => {
+        refresh();
+        es.close();
+      });
+    }
+
+    // Bindings
+    document.querySelectorAll('#intentBar .intent-tab').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('#intentBar .intent-tab').forEach((t) => t.classList.remove('active'));
+        tab.classList.add('active');
+        selectedCategory = tab.dataset.cat;
+        renderExamples(selectedCategory);
+        const samples = EXAMPLES[selectedCategory] || EXAMPLES.custom;
+        document.getElementById('purposeInput').value = samples[0];
+        if (document.getElementById('placesPanel').classList.contains('visible')) {
+          handleDiscover();
+        }
+      });
+    });
+
+    document.getElementById('citySelect').addEventListener('change', (e) => {
+      populateLocalities(e.target.value);
+      if (e.target.value !== '__custom__' && document.getElementById('placesPanel').classList.contains('visible')) {
+        handleDiscover();
+      }
+    });
+
+    document.getElementById('localitySelect').addEventListener('change', (e) => {
+      const row = document.getElementById('customGeoRow');
+      const areaIn = document.getElementById('customAreaInput');
+      if (e.target.value === '__custom__') {
+        row.classList.add('visible');
+        areaIn.style.display = 'block';
+        areaIn.focus();
+      } else {
+        row.classList.remove('visible');
+        areaIn.style.display = 'none';
+        if (document.getElementById('placesPanel').classList.contains('visible')) {
+          handleDiscover();
+        }
+      }
+    });
+
+    document.getElementById('discoverBtn').addEventListener('click', handleDiscover);
+    document.getElementById('addPlaceBtn').addEventListener('click', handleAddSpecificPlace);
+    document.getElementById('addPlaceNameInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleAddSpecificPlace();
+      }
+    });
+
+    document.getElementById('toggleManualPhoneBtn').addEventListener('click', () => {
+      const ph = document.getElementById('addPlacePhoneInput');
+      const hidden = ph.style.display === 'none';
+      ph.style.display = hidden ? 'block' : 'none';
+      if (hidden) ph.focus();
+    });
+
+    document.getElementById('selectTop3Btn').addEventListener('click', () => {
+      discoveredShops.forEach((s, i) => { s._checked = i < 3; });
+      renderPlacesList();
+    });
+    document.getElementById('clearSelBtn').addEventListener('click', () => {
+      discoveredShops.forEach((s) => { s._checked = false; });
+      renderPlacesList();
+    });
+
+    document.getElementById('startCallsBtn').addEventListener('click', handleStartCalls);
+    document.getElementById('stopCallsBtn').addEventListener('click', async () => {
+      if (!activeQuestId) return;
+      await fetch(`/api/quests/${activeQuestId}/stop`, { method: 'POST', headers: apiHeaders() });
+    });
+
+    init();
+  </script>
+</body>
+</html>

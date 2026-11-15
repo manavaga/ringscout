@@ -1,0 +1,124 @@
+{
+  "protocolVersion": "1.0",
+  "name": "RingScout \u2014 Real-Time Google Maps Voice Insights Agent",
+  "description": "Calls real open hotels, restaurants, clinics, MRI/diagnostic centers, petrol pumps, salons, auto shops, or pharmacies found on Google Maps in parallel (en-IN / hi-IN) to verify live availability, wait times, tariffs/rates in \u20b9, and custom questions with 24kHz .wav audio proof.",
+  "url": "https://ringscout-hom7ntreuq-uc.a.run.app/a2a",
+  "version": "2.0.0",
+  "provider": {
+    "organization": "RingScout",
+    "url": "https://ringscout-hom7ntreuq-uc.a.run.app"
+  },
+  "defaultInputModes": [
+    "text",
+    "application/json"
+  ],
+  "defaultOutputModes": [
+    "text",
+    "application/json",
+    "audio/wav"
+  ],
+  "supportedInterfaces": [
+    {
+      "url": "https://ringscout-hom7ntreuq-uc.a.run.app/a2a",
+      "protocolBinding": "JSON-RPC",
+      "protocolVersion": "1.0"
+    },
+    {
+      "url": "https://ringscout-hom7ntreuq-uc.a.run.app/mcp",
+      "protocolBinding": "MCP-Streamable-HTTP",
+      "protocolVersion": "2025-06-18"
+    },
+    {
+      "url": "https://ringscout-hom7ntreuq-uc.a.run.app/openapi-actions.json",
+      "protocolBinding": "OpenAPI-3.1-Actions",
+      "protocolVersion": "3.1.0"
+    },
+    {
+      "url": "https://ringscout-hom7ntreuq-uc.a.run.app/api/v1/scout",
+      "protocolBinding": "HTTP+JSON",
+      "protocolVersion": "x402-v2+stripe-mpp-1.0"
+    }
+  ],
+  "endpoints": {
+    "a2a_jsonrpc": "https://ringscout-hom7ntreuq-uc.a.run.app/a2a",
+    "mcp": "https://ringscout-hom7ntreuq-uc.a.run.app/mcp",
+    "chatgpt_openapi_actions": "https://ringscout-hom7ntreuq-uc.a.run.app/openapi-actions.json",
+    "mcp_registry_card": "https://ringscout-hom7ntreuq-uc.a.run.app/.well-known/mcp.json",
+    "llms_txt": "https://ringscout-hom7ntreuq-uc.a.run.app/llms.txt",
+    "x402_scout": "https://ringscout-hom7ntreuq-uc.a.run.app/api/v1/scout",
+    "x402_discovery": "https://ringscout-hom7ntreuq-uc.a.run.app/.well-known/x402",
+    "pricing": "https://ringscout-hom7ntreuq-uc.a.run.app/api/v1/pricing"
+  },
+  "protocols": [
+    "a2a-1.0",
+    "mcp-streamable-http",
+    "chatgpt-openapi-actions-3.1",
+    "stripe-mpp-1.0",
+    "x402-v2",
+    "google-ap2-1.0"
+  ],
+  "payment": {
+    "gate_mode": "off",
+    "free_daily_calls": 10,
+    "price_usd": 0.75,
+    "supported_rails": [
+      "free_phase_a",
+      "stripe_mpp_spt",
+      "x402_base_usdc"
+    ],
+    "stripe_mode": "mpp_hmac_ready",
+    "x402_network": "eip155:8453",
+    "x402_testnet_network": "eip155:84532",
+    "x402_asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "x402_testnet_asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    "x402_atomic_amount": "750000",
+    "pay_to": "0xafa03d9F1267d977310be682e82A5338b97D22C2",
+    "facilitator": "https://www.x402.org/facilitator/verify",
+    "guarantee": "Full refund / zero charge if 0 places answer"
+  },
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false,
+    "liveIndiaPstnConfigured": true,
+    "supportedCategories": [
+      "hotel",
+      "restaurant",
+      "clinic",
+      "diagnostics",
+      "petrol",
+      "auto",
+      "salon",
+      "pharmacy",
+      "custom"
+    ],
+    "languages": [
+      "en-IN (Indian English)",
+      "hi-IN (Hindi / Hinglish)"
+    ],
+    "maxParallelCalls": 5
+  },
+  "skills": [
+    {
+      "id": "scout_places_on_google_maps",
+      "name": "Call Google Maps Places for Live Availability, Rates & Insights",
+      "description": "Finds open hotels, restaurants, clinics, MRI centers, petrol pumps, salons, auto garages, or pharmacies on Google Maps, calls them in parallel in natural en-IN / hi-IN voice with street-landmark confidence markers, and returns verified availability, \u20b9 rates, key answers, and 24kHz .wav audio proof.",
+      "tags": [
+        "google-maps",
+        "voice-ai",
+        "hotels",
+        "restaurants",
+        "clinics",
+        "petrol",
+        "mri",
+        "pharmacy",
+        "mcp",
+        "a2a"
+      ],
+      "examples": [
+        "Call top 3 hotels in Bandra West, Mumbai to check room availability tonight, 10 AM early check-in, and direct phone tariff in \u20b9.",
+        "Call restaurants in Indiranagar, Bengaluru to check table for 4 at 8:30 PM tonight with outdoor seating.",
+        "Check which petrol pump in Bandra West has XP95 petrol and nitrogen air working right now."
+      ]
+    }
+  ]
+}

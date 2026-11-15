@@ -1,0 +1,31 @@
+# Python & Virtualenvs
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Secrets & Environment Files (NEVER COMMIT)
+.env
+.env.*
+!.env.example
+*secret*
+!src/ringscout/secrets_manager.py
+!scripts/setup_gcp_secrets.sh
+*credential*
+pstn_carrier.json
+*.pem
+*.key
+*.p12
+
+# OS / IDE / Logs
+.DS_Store
+*.log
+*.wav
+/tmp/
