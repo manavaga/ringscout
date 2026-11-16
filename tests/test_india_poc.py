@@ -158,7 +158,7 @@ def test_filter_and_dedupe_raw_shops_and_xss_maps_uri() -> None:
 
 def test_thin_live_socket_zero_tools_vocal_tone_and_phone_redaction() -> None:
     assert GCP_PROJECT_ID == "manav-chub"
-    assert MAX_CALL_DURATION_SEC == 90.0
+    assert MAX_CALL_DURATION_SEC == 150.0
     assert VOICEMAIL_BAILOUT_MAX_SEC == 5.0
 
     req = DiscoverRequest(query="pharmacy medical store chemist open now")
@@ -2051,5 +2051,41 @@ def test_spa_vs_salon_specific_place_dashboard_and_zero_repo_secrets(
             continue
         for pat in forbidden_regexes:
             assert not _re.search(pat, content), f"Secret token leaked in {fp}"
+
+
+def test_yauatcha_ivr_and_human_pickup_regression() -> None:
+    """Verify exact Yauatcha BKC PBX hold -> multi-city keypad -> hostess 'Yes.' / 'how may I assist you?' flow."""
+    from ringscout.voice_engine import (
+        MAX_CALL_DURATION_SEC,
+        extract_ivr_dtmf_digit,
+        is_ivr_or_hold_announcement,
+        is_live_human_pickup_after_ivr,
+    )
+
+    assert MAX_CALL_DURATION_SEC == 150.0
+
+    # 1. Yauatcha Stage-1 PBX hold recording must enter IVR mute immediately (no premature 'Hi hello' blurt!)
+    stage1 = "Thank you for calling Yawatcha. Your call will be answered shortly."
+    assert is_ivr_or_hold_announcement(stage1) is True
+
+    # 2. Yauatcha Stage-2 multi-city IVR must select '1' for Mumbai restaurant booking
+    stage2 = (
+        "Yauatcha, Mumbai, dial one. For Yauatcha, Bengaluru, dial two. "
+        "For Yauatcha, Kolkata, dial three. This call may be recorded for internal training and monitoring purposes."
+    )
+    assert is_ivr_or_hold_announcement(stage2) is True
+    digit = extract_ivr_dtmf_digit(
+        stage2,
+        preferred_tone=VocalTone.POLITE_INDIAN_ENGLISH,
+        user_goal="Table for 4 tonight at 8:30 PM with outdoor seating",
+    )
+    assert digit == "1"
+
+    # 3. Live hostess greetings ('how may I assist you?' and short 'Yes.') must immediately unmute IVR mode!
+    assert is_ivr_or_hold_announcement("Yauatcha BKC, good afternoon, how may I assist you?") is False
+    assert is_live_human_pickup_after_ivr("Yauatcha BKC, good afternoon, how may I assist you?") is True
+    assert is_live_human_pickup_after_ivr("Yes.") is True
+    assert is_live_human_pickup_after_ivr("Hello.") is True
+
 
 

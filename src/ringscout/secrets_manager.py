@@ -28,7 +28,7 @@ SECRET_NAME_MAP: dict[str, str] = {
 
 
 def _metadata_access_token() -> str | None:
-    """Fetch service-account OAuth token from GCP Metadata Server when running on Cloud Run / GCE."""
+    """Fetch service-account OAuth token from GCP Metadata Server on Cloud Run/GCE, falling back to `gcloud` CLI on workstation."""
     if os.environ.get("PYTEST_CURRENT_TEST"):
         return None
     req = urllib.request.Request(
@@ -36,11 +36,25 @@ def _metadata_access_token() -> str | None:
         headers={"Metadata-Flavor": "Google"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=1.5) as resp:
+        with urllib.request.urlopen(req, timeout=1.2) as resp:
             import json
 
             data = json.loads(resp.read().decode("utf-8"))
-            return str(data.get("access_token") or "") or None
+            tok = str(data.get("access_token") or "")
+            if tok:
+                return tok
+    except Exception:
+        pass
+    try:
+        import subprocess
+
+        tok = subprocess.check_output(
+            ["gcloud", "auth", "print-access-token"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=4.0,
+        ).strip()
+        return tok or None
     except Exception:
         return None
 

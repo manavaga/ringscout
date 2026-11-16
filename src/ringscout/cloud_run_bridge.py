@@ -227,37 +227,22 @@ async def relay_quest_via_cloud_run(
             }
             start_resp = await http.post(f"{base}/api/quests", headers=hdrs, json=quest_body)
 
-            # If Cloud Run autoscaled or cold-started, re-verify every selected Google Maps / custom shop in parallel and retry
+            # If Cloud Run autoscaled or cold-started, deterministically register every Google Maps shop via admin-authenticated /api/places/add and retry
             if start_resp.status_code == 400 and "unverified" in start_resp.text.lower():
-                reverify_tasks = []
-                for s in quest.shops:
-                    if s.shop_id.startswith("custom_"):
-                        reverify_tasks.append(
-                            http.post(
-                                f"{base}/api/places/add",
-                                headers=hdrs,
-                                json={
-                                    "place_name": s.name,
-                                    "phone": s.phone_e164,
-                                    "city": s.city or quest.city,
-                                    "locality": s.locality or quest.locality,
-                                    "place_category": quest.place_category.value,
-                                },
-                            )
-                        )
-                    else:
-                        reverify_tasks.append(
-                            http.post(
-                                f"{base}/api/discover",
-                                headers=hdrs,
-                                json={
-                                    "query": f"{s.name} {s.locality or quest.locality}"[:180],
-                                    "city": quest.city,
-                                    "locality": quest.locality,
-                                    "max_shops": 8,
-                                },
-                            )
-                        )
+                reverify_tasks = [
+                    http.post(
+                        f"{base}/api/places/add",
+                        headers=hdrs,
+                        json={
+                            "place_name": s.name,
+                            "phone": s.phone_e164,
+                            "city": s.city or quest.city,
+                            "locality": s.locality or quest.locality,
+                            "place_category": quest.place_category.value,
+                        },
+                    )
+                    for s in quest.shops
+                ]
                 await asyncio.gather(*reverify_tasks, return_exceptions=True)
                 start_resp = await http.post(f"{base}/api/quests", headers=hdrs, json=quest_body)
 
@@ -295,7 +280,7 @@ async def relay_quest_via_cloud_run(
             last_vobiz_cdr_poll = 0.0
             vobiz_cfg = pstn_adapter.resolve_config() if (mode_str == "live_pstn" and pstn_adapter is not None) else None
             terminal_states = {CallStatus.COMPLETED, CallStatus.SKIPPED, CallStatus.STOPPED, CallStatus.FAILED}
-            deadline = time.monotonic() + (150.0 if mode_str == "live_pstn" else 38.0)
+            deadline = time.monotonic() + (210.0 if mode_str == "live_pstn" else 38.0)
 
             while time.monotonic() < deadline:
                 if stop_event.is_set():
@@ -381,11 +366,11 @@ async def relay_quest_via_cloud_run(
                                 local_call.transcript = [
                                     TranscriptTurn(
                                         speaker="system",
-                                        text=f"Vobiz Telecom: {cause} (line did not answer within 25s).",
+                                        text=f"Vobiz Telecom: {cause} (line did not answer within 42s).",
                                         timestamp_sec=round(now_mono - ring_started_at[sid], 1),
                                     )
                                 ]
-                            elif (now_mono - ring_started_at[sid]) >= 45.0 and not local_call.transcript:
+                            elif (now_mono - ring_started_at[sid]) >= 52.0 and not local_call.transcript:
                                 cdr_terminal_sids.add(sid)
                                 local_call.status = CallStatus.SKIPPED
                                 local_call.outcome = CallOutcome.BUSY_NO_ANSWER
@@ -393,8 +378,8 @@ async def relay_quest_via_cloud_run(
                                 local_call.transcript = [
                                     TranscriptTurn(
                                         speaker="system",
-                                        text="Line rang for 25s with no pickup (Ring Timeout).",
-                                        timestamp_sec=25.0,
+                                        text="Line rang for 42s with no pickup (Ring Timeout).",
+                                        timestamp_sec=42.0,
                                     )
                                 ]
 

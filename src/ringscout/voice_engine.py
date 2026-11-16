@@ -48,7 +48,7 @@ LIVE_FALLBACK_TARGETS: tuple[tuple[str, str], ...] = (
 SIDE_BRAIN_MODEL = "gemini-2.5-flash"
 TTS_DIALOGUE_MODEL = "gemini-2.5-flash-preview-tts"
 
-MAX_CALL_DURATION_SEC = 90.0
+MAX_CALL_DURATION_SEC = 150.0
 VOICEMAIL_BAILOUT_MAX_SEC = 5.0
 
 
@@ -859,11 +859,25 @@ def is_ivr_or_hold_announcement(text: str) -> bool:
     if has_keypad:
         return True
 
-    # If a live receptionist says 'Welcome to X, how may I help you?', that is a HUMAN, not an IVR!
-    if any(h in norm for h in ("how may i help", "how can i help", "speaking")):
+    # If a live receptionist says 'Welcome to X, how may I help/assist you?', that is a HUMAN, not an IVR!
+    if any(
+        h in norm
+        for h in (
+            "how may i help",
+            "how can i help",
+            "how may i assist",
+            "how can i assist",
+            "speaking",
+        )
+    ):
         return False
 
     automated_pbx_markers = (
+        "thank you for calling",
+        "answered shortly",
+        "connected shortly",
+        "attended shortly",
+        "with you shortly",
         "more than healthcare",
         "extension number",
         "desired extension",
@@ -872,6 +886,8 @@ def is_ivr_or_hold_announcement(text: str) -> bool:
         "assist you shortly",
         "your call is important",
         "all our executives",
+        "be recorded for",
+        "internal training",
         "for information in english",
         "jankari ke liye",
         "जानकारी के लिए",
@@ -888,7 +904,7 @@ def is_live_human_pickup_after_ivr(
         return False
     clean = text.strip().lower()
     words = clean.split()
-    if not words or len(words) > 16:
+    if not words or len(words) > 18:
         return False
     ivr_sentence_starters = (
         "please",
@@ -903,6 +919,7 @@ def is_live_human_pickup_after_ivr(
         "your ",
         "all ",
         "if ",
+        "this call",
         "kripya",
         "कृपया",
     )
@@ -913,6 +930,8 @@ def is_live_human_pickup_after_ivr(
         "hi ",
         "hi,",
         "hi.",
+        "yes",
+        "yeah",
         "good morning",
         "good afternoon",
         "good evening",
@@ -921,6 +940,8 @@ def is_live_human_pickup_after_ivr(
         "speaking",
         "how may i help",
         "how can i help",
+        "how may i assist",
+        "how can i assist",
         "boliye",
         "जी",
         "हेलो",
@@ -932,8 +953,19 @@ def is_live_human_pickup_after_ivr(
     )
     if any(cue in clean for cue in explicit_human_greetings):
         return True
-    if allow_short_utterance_fallback and len(words) <= 6:
-        dept_pickups = ("hospital", "radiology", "reception", "diagnostics", "clinic", "pharmacy", "ji")
+    if allow_short_utterance_fallback and len(words) <= 7:
+        dept_pickups = (
+            "hospital",
+            "radiology",
+            "reception",
+            "diagnostics",
+            "clinic",
+            "pharmacy",
+            "reservations",
+            "reservation",
+            "restaurant",
+            "ji",
+        )
         return any(d in clean for d in dept_pickups)
     return False
 
@@ -956,6 +988,8 @@ def extract_ivr_dtmf_digit(
         dept_priority.extend(["radiology", "mri", "imaging", "scan", "appointment", "booking"])
     elif any(k in goal_low for k in ("hotel", "room", "check-in", "tariff", "stay")):
         dept_priority.extend(["reservations", "reservation", "room", "mumbai", "bengaluru", "delhi", "hyderabad", "pune", "goa", "front desk"])
+    elif any(k in goal_low for k in ("table", "restaurant", "dinner", "lunch", "reservation", "seating", "rooftop", "buffet")):
+        dept_priority.extend(["reservations", "reservation", "table", "booking", "dining", "mumbai", "bandra", "bkc", "bengaluru", "delhi", "hyderabad", "pune", "kolkata", "host"])
     elif any(k in goal_low for k in ("medicine", "strip", "tablet", "pharmacy", "chemist", "augmentin")):
         dept_priority.extend(["pharmacy", "chemist", "medicine", "counter"])
 

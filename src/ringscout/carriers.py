@@ -1316,7 +1316,7 @@ class LiveIndiaPstnAdapter:
                     slot.session = sess
                     slot.ready_event.set()
                     try:
-                        await asyncio.wait_for(slot.release_event.wait(), timeout=28.0)
+                        await asyncio.wait_for(slot.release_event.wait(), timeout=46.0)
                     except TimeoutError:
                         if slot.claimed:
                             await asyncio.wait_for(
@@ -1508,7 +1508,7 @@ class LiveIndiaPstnAdapter:
                             "answer_method": "POST",
                             "hangup_url": status_url,
                             "hangup_method": "POST",
-                            "ring_timeout": 25,
+                            "ring_timeout": 42,
                             "time_limit": int(MAX_CALL_DURATION_SEC),
                         },
                     )
@@ -1533,7 +1533,7 @@ class LiveIndiaPstnAdapter:
                             "answer_method": "POST",
                             "hangup_url": status_url,
                             "hangup_method": "POST",
-                            "ring_timeout": 25,
+                            "ring_timeout": 42,
                             "time_limit": int(MAX_CALL_DURATION_SEC),
                         },
                     )
@@ -1553,7 +1553,7 @@ class LiveIndiaPstnAdapter:
                             "Twiml": twiml,
                             "StatusCallback": status_url,
                             "StatusCallbackMethod": "POST",
-                            "Timeout": "25",
+                            "Timeout": "42",
                             "TimeLimit": str(int(MAX_CALL_DURATION_SEC)),
                         },
                     )
@@ -1567,7 +1567,7 @@ class LiveIndiaPstnAdapter:
             self._start_prewarm_slot(quest, shop, http_base)
             if not os.environ.get("PYTEST_CURRENT_TEST"):
                 asyncio.create_task(
-                    self._ring_timeout_watchdog(quest, shop.shop_id, publish, timeout_sec=30.0)
+                    self._ring_timeout_watchdog(quest, shop.shop_id, publish, timeout_sec=47.0)
                 )
             publish(
                 "call_update",
@@ -1696,7 +1696,7 @@ class LiveIndiaPstnAdapter:
         quest: QuestSession,
         shop_id: str,
         publish: EventPublishFn,
-        timeout_sec: float = 30.0,
+        timeout_sec: float = 47.0,
     ) -> None:
         """Auto-close RINGING legs if the carrier never fires hangup_url on an unanswered ring timeout."""
         await asyncio.sleep(timeout_sec)
@@ -1709,8 +1709,8 @@ class LiveIndiaPstnAdapter:
         call.transcript.append(
             TranscriptTurn(
                 speaker="system",
-                text="Line rang for 25s with no pickup (Ring Timeout).",
-                timestamp_sec=25.0,
+                text="Line rang for 42s with no pickup (Ring Timeout).",
+                timestamp_sec=42.0,
             )
         )
         publish(
@@ -1943,7 +1943,7 @@ class LiveIndiaPstnAdapter:
                 pass
 
         async def dispatch_ivr_dtmf(digit: str) -> None:
-            nonlocal ivr_mode_active, last_dtmf_ts
+            nonlocal ivr_mode_active, last_dtmf_ts, human_beat1_delivered, human_shop_turns
             clean_digit = digit.strip()[:1]
             now_d = time.monotonic()
             allow_repeat_stage = last_dtmf_ts > 0.0 and (now_d - last_dtmf_ts) >= 4.5
@@ -1955,6 +1955,11 @@ class LiveIndiaPstnAdapter:
             ):
                 return
             ivr_mode_active = True
+            # Reset pre-transfer turn flags so when a real human answers after the keypad transfer,
+            # `post_ivr_human_nudge()` always speaks Turn 1 cleanly!
+            human_beat1_delivered = False
+            human_shop_turns = 0
+            call.disclosure_delivered = False
             last_dtmf_ts = now_d
             noise_gate_state.clear()
             agent_text_buf.clear()
@@ -2487,7 +2492,12 @@ class LiveIndiaPstnAdapter:
                                     buf_joined = "".join(shop_text_buf)
 
                                     can_enter_ivr = (human_shop_turns == 0) and (not human_beat1_delivered)
-                                    if can_enter_ivr and is_ivr_or_hold_announcement(buf_joined):
+                                    has_explicit_keypad = bool(
+                                        call.quote is None
+                                        and is_ivr_or_hold_announcement(buf_joined)
+                                        and any(k in buf_joined.lower() for k in ("dial ", "press ", "dabay", "दबा"))
+                                    )
+                                    if (can_enter_ivr or has_explicit_keypad) and is_ivr_or_hold_announcement(buf_joined):
                                         if not ivr_mode_active:
                                             ivr_mode_active = True
                                             call.status = CallStatus.IVR_MENU
@@ -2502,7 +2512,7 @@ class LiveIndiaPstnAdapter:
                                         emit_state()
                                         asyncio.create_task(post_ivr_human_nudge())
 
-                                    if can_enter_ivr or ivr_mode_active:
+                                    if can_enter_ivr or ivr_mode_active or has_explicit_keypad:
                                         allow_repeat = last_dtmf_ts > 0.0 and (now_in - last_dtmf_ts) >= 4.5
                                         sent_block = () if allow_repeat else call.dtmf_sent
                                         fast_digit = extract_ivr_dtmf_digit(
