@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 from ringscout.carriers import LiveIndiaPstnAdapter
 from ringscout.cloud_run_bridge import is_bridge_enabled, relay_quest_via_cloud_run
 from ringscout.google_lookup import discover_indian_shops, infer_place_category
+from ringscout.india_locations import INDIA_CITY_AREAS
 from ringscout.models import (
     A2AScoutRequest,
     AP2SpendMandate,
@@ -685,9 +686,14 @@ def build_agent_card(base_url: str, live_pstn_ready: bool) -> dict[str, Any]:
         "endpoints": {
             "a2a_jsonrpc": f"{clean_base}/a2a",
             "mcp": f"{clean_base}/mcp",
-            "chatgpt_openapi_actions": f"{clean_base}/openapi-actions.json",
+            "mcp_sse_legacy": f"{clean_base}/sse",
+            "mcp_server_card": f"{clean_base}/.well-known/mcp/server-card.json",
             "mcp_registry_card": f"{clean_base}/.well-known/mcp.json",
+            "official_mcp_server_json": f"{clean_base}/server.json",
+            "ai_catalog": f"{clean_base}/.well-known/ai-catalog.json",
+            "chatgpt_openapi_actions": f"{clean_base}/openapi-actions.json",
             "llms_txt": f"{clean_base}/llms.txt",
+            "health_ping": f"{clean_base}/ping",
             "x402_scout": f"{clean_base}/api/v1/scout",
             "x402_discovery": f"{clean_base}/.well-known/x402",
             "pricing": f"{clean_base}/api/v1/pricing",
@@ -1444,41 +1450,186 @@ _SCOUT_MCP_INPUT_SCHEMA: dict[str, Any] = {
     "required": ["item_question"],
 }
 
+OFFICIAL_MCP_SCHEMA_URL = "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json"
+SEP2127_SERVER_CARD_SCHEMA_URL = "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json"
+MAX_MCP_BATCH_SIZE = 32
+MCP_SHORT_DESCRIPTION = (
+    "Calls open Google Maps places (+91) in parallel to verify live availability, slots, and INR rates."
+)
+SUPPORTED_MCP_PROTOCOL_VERSIONS: tuple[str, ...] = (
+    "2025-11-25",
+    "2025-06-18",
+    "2025-03-26",
+    "2024-11-05",
+)
+MCP_SERVER_INSTRUCTIONS = (
+    "Use RingScout whenever a user needs real-time offline facts from a physical business that websites, "
+    "aggregators, or static Google Maps listings cannot answer—such as calling open restaurants (live table "
+    "availability, wait times, outdoor/rooftop seating), hotels (early check-in, direct phone tariff in ₹), "
+    "spas/salons, clinics/MRI centers (same-day slots, walk-in cash price), petrol/EV stations, auto shops, "
+    "or pharmacies. Call `get_ringscout_pricing_and_status` for read-only health/capabilities, or "
+    "`scout_places_on_google_maps` to place up to 5 parallel natural en-IN/hi-IN voice calls with 24kHz WAV proof."
+)
+
 MCP_TOOLS_SPEC: list[dict[str, Any]] = [
     {
         "name": "get_ringscout_pricing_and_status",
+        "title": "Check RingScout Voice Capabilities, Pricing & Live Status",
         "description": (
             "Read-only free tool returning RingScout's real-time Google Maps voice-scouting capabilities, "
             "active payment gate mode (Phase A open free tier vs Phase B Stripe MPP / x402 USDC), "
-            "supported categories (hotels, restaurants, clinics, MRI, petrol, auto, salons, pharmacies), and PSTN status."
+            "supported categories (hotels, restaurants, spas, salons, clinics, MRI, petrol, auto, pharmacies), "
+            "and live PSTN carrier readiness."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {},
+            "additionalProperties": False,
+        },
+        "annotations": {
+            "title": "Check RingScout Status & Pricing",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False,
         },
     },
     {
         "name": "scout_places_on_google_maps",
+        "title": "Call Open Google Maps Businesses in Parallel for Live Availability & ₹ Rates",
         "description": (
             "Use this tool whenever the user needs real-time facts from a real-world business that websites and "
             "booking apps don't show: calling hotels (early check-in, direct phone tariff), restaurants (live table "
-            "wait time, rooftop/pet policy), clinics & MRI centers (same-day slot, walk-in cash price), petrol pumps "
-            "& EV hubs (XP95 stock, nitrogen air, charger uptime), salons, auto shops, or pharmacies. Finds open "
-            "Google Maps places, calls them in parallel in natural Indian English / Hindi, and returns verified "
-            "availability, ₹ rates, key insights, and 24kHz .wav audio proof."
+            "wait time, sold-out check, rooftop/pet policy), spas & salons (same-day slot), clinics & MRI centers "
+            "(same-day slot, walk-in cash price), petrol pumps & EV hubs (XP95 stock, nitrogen air, charger uptime), "
+            "auto shops, or pharmacies. Finds open Google Maps places, calls them in parallel in natural Indian "
+            "English / Hindi, and returns verified availability, ₹ rates, key insights, and 24kHz .wav audio proof."
         ),
         "inputSchema": _SCOUT_MCP_INPUT_SCHEMA,
+        "annotations": {
+            "title": "Scout Places on Google Maps via Parallel Voice Calls",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        },
     },
     {
         "name": "scout_india_local_businesses",
+        "title": "Call India (+91) Local Shops & Clinics in Hinglish / Indian English",
         "description": (
-            "Alias for `scout_places_on_google_maps`: discovers up to 5 open +91 hotels, restaurants, clinics, "
-            "MRI centers, petrol stations, or pharmacies on Google Maps, calls them in parallel in natural "
+            "Alias for `scout_places_on_google_maps`: discovers up to 5 open +91 hotels, restaurants, spas, salons, "
+            "clinics, MRI centers, petrol stations, or pharmacies on Google Maps, calls them in parallel in natural "
             "en-IN / hi-IN voice, and returns ranked ₹ quotes + playable .wav audio proof URLs."
         ),
         "inputSchema": _SCOUT_MCP_INPUT_SCHEMA,
+        "annotations": {
+            "title": "Scout India Local Businesses (+91)",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        },
     },
 ]
+
+MCP_RESOURCES_SPEC: list[dict[str, Any]] = [
+    {
+        "uri": "ringscout://status/capabilities",
+        "name": "RingScout Live Capabilities & Pricing",
+        "description": "Real-time Agent Card, supported Google Maps categories, PSTN carrier readiness, and Phase A/B payment gate status.",
+        "mimeType": "application/json",
+    },
+    {
+        "uri": "ringscout://locations/india-neighbourhoods",
+        "name": "Supported Indian Cities & PIN-Grounded Neighbourhoods",
+        "description": "Directory of 10 major Indian cities and ~130 PIN-grounded neighbourhoods for hyperlocal Google Maps voice scouting.",
+        "mimeType": "application/json",
+    },
+    {
+        "uri": "ringscout://docs/discovery-endpoints",
+        "name": "RingScout Multi-Protocol Discovery Endpoints",
+        "description": "Machine-readable index of MCP, SEP-2127 Server Card, AI Catalog, Google A2A v1.0, OpenAPI Actions, and x402 endpoints.",
+        "mimeType": "application/json",
+    },
+]
+
+MCP_PROMPTS_SPEC: list[dict[str, Any]] = [
+    {
+        "name": "scout_restaurant_table",
+        "description": "Call open restaurants in a neighbourhood in parallel to check live table availability, wait time, and seating preferences.",
+        "arguments": [
+            {"name": "city", "description": "Indian city (e.g. Mumbai, Bengaluru, New Delhi)", "required": True},
+            {"name": "locality", "description": "Neighbourhood (e.g. Bandra West, Indiranagar)", "required": True},
+            {"name": "party_size", "description": "Number of guests (e.g. 4)", "required": False},
+            {"name": "time_slot", "description": "Target dining time (e.g. tonight at 8:30 PM)", "required": False},
+        ],
+    },
+    {
+        "name": "scout_hotel_direct_tariff",
+        "description": "Call open hotels in parallel to check same-night room availability, early check-in, and direct front-desk tariff in ₹.",
+        "arguments": [
+            {"name": "city", "description": "Indian city (e.g. Mumbai, Goa, Bengaluru)", "required": True},
+            {"name": "locality", "description": "Neighbourhood (e.g. Bandra West, Candolim)", "required": True},
+            {"name": "checkin_note", "description": "Room type & check-in request (e.g. Deluxe double tonight + 10 AM early check-in)", "required": False},
+        ],
+    },
+    {
+        "name": "scout_urgent_pharmacy_or_mri",
+        "description": "Call open pharmacies or diagnostic/MRI centers in parallel to verify urgent stock/slot availability and walk-in ₹ price.",
+        "arguments": [
+            {"name": "city", "description": "Indian city (e.g. Bengaluru, Mumbai)", "required": True},
+            {"name": "locality", "description": "Neighbourhood (e.g. Indiranagar, Bandra West)", "required": True},
+            {"name": "item_or_scan", "description": "Exact medicine or scan needed (e.g. Augmentin 625 Duo or 1.5T Brain MRI plain)", "required": True},
+        ],
+    },
+]
+
+
+def _negotiate_mcp_protocol_version(client_version: str | None) -> str:
+    cleaned = (client_version or "").strip()
+    if cleaned in SUPPORTED_MCP_PROTOCOL_VERSIONS:
+        return cleaned
+    return "2025-06-18"
+
+
+def _render_mcp_prompt(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
+    city = str(args.get("city") or "Mumbai")
+    locality = str(args.get("locality") or "Bandra West")
+    if name == "scout_restaurant_table":
+        party = str(args.get("party_size") or "4")
+        slot = str(args.get("time_slot") or "tonight at 8:30 PM")
+        text = (
+            f"Use `scout_places_on_google_maps` with `place_category='restaurant'`, `city='{city}'`, "
+            f"`locality='{locality}'`, and `item_question='Table for {party} {slot} and live wait time'` "
+            "to call top open restaurants in parallel and summarize which ones have confirmed seating."
+        )
+        return {
+            "description": f"Parallel restaurant table check in {locality}, {city}",
+            "messages": [{"role": "user", "content": {"type": "text", "text": text}}],
+        }
+    if name == "scout_hotel_direct_tariff":
+        note = str(args.get("checkin_note") or "Deluxe double room tonight, 10 AM early check-in, and direct phone tariff in ₹")
+        text = (
+            f"Use `scout_places_on_google_maps` with `place_category='hotel'`, `city='{city}'`, "
+            f"`locality='{locality}'`, and `item_question='{note}'` to compare verified direct hotel rates."
+        )
+        return {
+            "description": f"Parallel hotel tariff & early check-in check in {locality}, {city}",
+            "messages": [{"role": "user", "content": {"type": "text", "text": text}}],
+        }
+    if name == "scout_urgent_pharmacy_or_mri":
+        item = str(args.get("item_or_scan") or "1.5T Brain MRI slot today and walk-in cash price in ₹")
+        cat = "diagnostics" if any(k in item.lower() for k in ("mri", "ct", "scan", "xray", "x-ray", "ultrasound")) else "pharmacy"
+        text = (
+            f"Use `scout_places_on_google_maps` with `place_category='{cat}'`, `city='{city}'`, "
+            f"`locality='{locality}'`, and `item_question='{item}'` to find the fastest confirmed option and ₹ price."
+        )
+        return {
+            "description": f"Urgent {cat} availability & ₹ price check in {locality}, {city}",
+            "messages": [{"role": "user", "content": {"type": "text", "text": text}}],
+        }
+    return None
 
 
 async def handle_mcp_jsonrpc(
@@ -1495,32 +1646,69 @@ async def handle_mcp_jsonrpc(
     stripe_token_header: str | None = None,
     client_fingerprint: str = "mcp_connector",
     out_headers: dict[str, str] | None = None,
+    incoming_session_id: str | None = None,
 ) -> dict[str, Any] | None:
-    """Process a single MCP Streamable HTTP JSON-RPC 2.0 request (Claude, Gemini, ChatGPT, Cursor)."""
+    """Process a single MCP Streamable HTTP JSON-RPC 2.0 request (Claude, Gemini, ChatGPT, Cursor, Registries)."""
+    if rpc_body.get("jsonrpc") != "2.0":
+        return {
+            "jsonrpc": "2.0",
+            "id": rpc_body.get("id"),
+            "error": {"code": -32600, "message": "Invalid Request: jsonrpc must be '2.0'"},
+        }
+
+    if "method" not in rpc_body and ("result" in rpc_body or "error" in rpc_body):
+        # Per MCP Streamable HTTP §2.1.2: client-sent JSON-RPC responses receive 202 Accepted
+        return None
+
     method = str(rpc_body.get("method") or "")
     req_id = rpc_body.get("id")
-    params = rpc_body.get("params") or {}
+    params = rpc_body.get("params") if isinstance(rpc_body.get("params"), dict) else {}
+    clean_base = base_url.rstrip("/")
 
-    if req_id is None and method.startswith("notifications/"):
+    if incoming_session_id and out_headers is not None:
+        out_headers.setdefault("Mcp-Session-Id", incoming_session_id)
+
+    if "id" not in rpc_body or req_id is None:
+        # Per JSON-RPC 2.0 & MCP Streamable HTTP §2.1.2: all notifications receive 202 Accepted with no body
         return None
 
     if method == "initialize":
-        client_proto = str(params.get("protocolVersion") or "2025-06-18")
+        negotiated_proto = _negotiate_mcp_protocol_version(
+            str(params.get("protocolVersion") or "")
+        )
+        session_id = incoming_session_id or f"mcp_{uuid.uuid4().hex}"
+        if out_headers is not None:
+            out_headers["Mcp-Session-Id"] = session_id
+            out_headers["MCP-Protocol-Version"] = negotiated_proto
         return {
             "jsonrpc": "2.0",
             "id": req_id,
             "result": {
-                "protocolVersion": client_proto,
-                "capabilities": {"tools": {"listChanged": False}},
+                "protocolVersion": negotiated_proto,
+                "capabilities": {
+                    "tools": {"listChanged": False},
+                    "resources": {"subscribe": False, "listChanged": False},
+                    "prompts": {"listChanged": False},
+                },
                 "serverInfo": {
                     "name": "ringscout-india-voice-oracle",
+                    "title": "RingScout — Parallel Google Maps Voice Scout",
                     "version": "3.0.0",
+                    "websiteUrl": clean_base,
                 },
+                "instructions": MCP_SERVER_INSTRUCTIONS,
             },
         }
 
-    if method == "ping":
+    if method in ("ping", "logging/setLevel"):
         return {"jsonrpc": "2.0", "id": req_id, "result": {}}
+
+    if method == "completion/complete":
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {"completion": {"values": [], "total": 0, "hasMore": False}},
+        }
 
     if method == "tools/list":
         return {
@@ -1529,9 +1717,98 @@ async def handle_mcp_jsonrpc(
             "result": {"tools": MCP_TOOLS_SPEC},
         }
 
+    if method == "resources/list":
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {"resources": MCP_RESOURCES_SPEC},
+        }
+
+    if method == "resources/templates/list":
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {"resourceTemplates": []},
+        }
+
+    if method == "resources/read":
+        uri = str(params.get("uri") or "")
+        if uri == "ringscout://status/capabilities":
+            card = build_agent_card(base_url, manager.pstn_adapter.is_configured())
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "contents": [
+                        {
+                            "uri": uri,
+                            "mimeType": "application/json",
+                            "text": json.dumps(card, indent=2),
+                        }
+                    ]
+                },
+            }
+        if uri == "ringscout://locations/india-neighbourhoods":
+            summary = {
+                city: [{"name": a["name"], "pins": a["pins"]} for a in areas]
+                for city, areas in INDIA_CITY_AREAS.items()
+            }
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "contents": [
+                        {
+                            "uri": uri,
+                            "mimeType": "application/json",
+                            "text": json.dumps(summary, indent=2),
+                        }
+                    ]
+                },
+            }
+        if uri == "ringscout://docs/discovery-endpoints":
+            cat = build_ai_catalog_manifest(base_url)
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "contents": [
+                        {
+                            "uri": uri,
+                            "mimeType": "application/json",
+                            "text": json.dumps(cat, indent=2),
+                        }
+                    ]
+                },
+            }
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "error": {"code": -32002, "message": f"Resource not found: {uri}"},
+        }
+
+    if method == "prompts/list":
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {"prompts": MCP_PROMPTS_SPEC},
+        }
+
+    if method == "prompts/get":
+        p_name = str(params.get("name") or "")
+        p_args = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
+        rendered = _render_mcp_prompt(p_name, p_args)
+        if rendered is None:
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "error": {"code": -32602, "message": f"Unknown prompt: {p_name}"},
+            }
+        return {"jsonrpc": "2.0", "id": req_id, "result": rendered}
+
     if method == "tools/call":
         tool_name = str(params.get("name") or "")
-        args = params.get("arguments") or {}
+        args = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
         if tool_name == "get_ringscout_pricing_and_status":
             card = build_agent_card(base_url, manager.pstn_adapter.is_configured())
             return {
@@ -1563,7 +1840,7 @@ async def handle_mcp_jsonrpc(
                 else None
             )
             settlement, reason = await verify_a2a_payment(
-                resource_url=f"{base_url.rstrip('/')}/mcp",
+                resource_url=f"{clean_base}/mcp",
                 payment_sig_header=eff_payment_sig,
                 auth_header=auth_header,
                 sandbox_header=eff_sandbox,
@@ -1575,7 +1852,7 @@ async def handle_mcp_jsonrpc(
             )
             if settlement is None:
                 _, challenge_body = build_402_challenge(
-                    f"{base_url.rstrip('/')}/mcp", detail=reason
+                    f"{clean_base}/mcp", detail=reason
                 )
                 return {
                     "jsonrpc": "2.0",
@@ -1655,13 +1932,58 @@ async def handle_mcp_jsonrpc(
         return {
             "jsonrpc": "2.0",
             "id": req_id,
-            "error": {"code": -32601, "message": f"Unknown tool: {tool_name}"},
+            "error": {"code": -32602, "message": f"Unknown tool: {tool_name}"},
         }
 
     return {
         "jsonrpc": "2.0",
         "id": req_id,
         "error": {"code": -32601, "message": f"Method not found: {method}"},
+    }
+
+
+async def handle_mcp_payload(
+    rpc_payload: dict[str, Any] | list[Any],
+    **kwargs: Any,
+) -> dict[str, Any] | list[dict[str, Any]] | None:
+    """Process either a single JSON-RPC 2.0 request object or a bounded JSON-RPC 2.0 batch array."""
+    if isinstance(rpc_payload, dict):
+        return await handle_mcp_jsonrpc(rpc_payload, **kwargs)
+    if isinstance(rpc_payload, list):
+        if not rpc_payload:
+            return {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {"code": -32600, "message": "Empty JSON-RPC batch"},
+            }
+        if len(rpc_payload) > MAX_MCP_BATCH_SIZE:
+            return {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {
+                    "code": -32600,
+                    "message": f"JSON-RPC batch size ({len(rpc_payload)}) exceeds maximum ({MAX_MCP_BATCH_SIZE})",
+                },
+            }
+        responses: list[dict[str, Any]] = []
+        for item in rpc_payload:
+            if not isinstance(item, dict):
+                responses.append(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": None,
+                        "error": {"code": -32600, "message": "Invalid JSON-RPC batch item"},
+                    }
+                )
+                continue
+            res = await handle_mcp_jsonrpc(item, **kwargs)
+            if res is not None:
+                responses.append(res)
+        return responses if responses else None
+    return {
+        "jsonrpc": "2.0",
+        "id": None,
+        "error": {"code": -32600, "message": "Invalid JSON-RPC payload"},
     }
 
 
@@ -1775,25 +2097,147 @@ def build_openapi_actions_spec(base_url: str) -> dict[str, Any]:
     }
 
 
-def build_mcp_registry_manifest(base_url: str) -> dict[str, Any]:
-    """Build `/.well-known/mcp.json` discovery manifest for Official MCP Registry, Claude, Gemini, & Smithery."""
+def build_official_server_json(
+    base_url: str,
+    namespace_name: str = "io.github.manavagarwal/ringscout",
+) -> dict[str, Any]:
+    """Build strict `2025-12-11` Official MCP Registry `server.json` (`description` <= 100 chars)."""
     clean = base_url.rstrip("/")
     return {
-        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
-        "name": "io.ringscout/google-maps-voice-scout",
-        "title": "RingScout — Call Google Maps Places for Live Availability & Rates",
-        "description": (
-            "Remote Streamable HTTP MCP server that calls real open hotels, restaurants, clinics, MRI centers, "
-            "petrol stations, salons, auto garages, and pharmacies on Google Maps in parallel (en-IN / hi-IN) "
-            "and returns verified availability, ₹ prices, key insights, and .wav audio proof."
-        ),
+        "$schema": OFFICIAL_MCP_SCHEMA_URL,
+        "name": namespace_name,
+        "title": "RingScout — Google Maps Parallel Voice Scout",
+        "description": MCP_SHORT_DESCRIPTION,
         "version": "3.0.0",
         "websiteUrl": clean,
+        "repository": {
+            "url": "https://github.com/manavagarwal/ringscout",
+            "source": "github",
+        },
         "remotes": [
             {
                 "type": "streamable-http",
                 "url": f"{clean}/mcp",
-            }
+            },
+            {
+                "type": "sse",
+                "url": f"{clean}/sse",
+            },
         ],
+    }
+
+
+def build_mcp_server_card(base_url: str, live_pstn_ready: bool = True) -> dict[str, Any]:
+    """Build SEP-2127 MCP Server Card (`/.well-known/mcp/server-card.json` & `/mcp/server-card`)."""
+    clean = base_url.rstrip("/")
+    pay_state = masked_payment_status()
+    return {
+        "$schema": SEP2127_SERVER_CARD_SCHEMA_URL,
+        "name": "io.github.manavagarwal/ringscout",
+        "title": "RingScout — Call Google Maps Places for Live Availability & Rates",
+        "version": "3.0.0",
+        "description": MCP_SHORT_DESCRIPTION,
+        "websiteUrl": clean,
+        "repository": {
+            "url": "https://github.com/manavagarwal/ringscout",
+            "source": "github",
+        },
+        "remotes": [
+            {
+                "type": "streamable-http",
+                "url": f"{clean}/mcp",
+                "supportedProtocolVersions": list(SUPPORTED_MCP_PROTOCOL_VERSIONS),
+            },
+            {
+                "type": "sse",
+                "url": f"{clean}/sse",
+                "supportedProtocolVersions": ["2024-11-05"],
+            },
+        ],
+        "authentication": {
+            "required": pay_state["gate_mode"] == "required",
+            "mode": pay_state["gate_mode"],
+            "schemes": ["none", "stripe-mpp", "x402-eip3009"],
+        },
+        "capabilities": {
+            "tools": {"listChanged": False},
+            "resources": {"subscribe": False, "listChanged": False},
+            "prompts": {"listChanged": False},
+            "liveIndiaPstnConfigured": live_pstn_ready,
+        },
+        "instructions": MCP_SERVER_INSTRUCTIONS,
         "tools": [t["name"] for t in MCP_TOOLS_SPEC],
+        "prompts": [p["name"] for p in MCP_PROMPTS_SPEC],
+        "resources": [r["uri"] for r in MCP_RESOURCES_SPEC],
+        "_meta": {
+            "io.ringscout/discovery": {
+                "documentationUrl": f"{clean}/developers",
+                "summary": (
+                    "Remote Streamable HTTP MCP server that calls real open spas, salons, hotels, restaurants, "
+                    "clinics, MRI centers, petrol stations, auto garages, and pharmacies on Google Maps in parallel "
+                    "(en-IN / hi-IN) and returns verified availability, ₹ prices, and 24kHz .wav audio proof."
+                ),
+                "toolDefinitions": MCP_TOOLS_SPEC,
+            }
+        },
+    }
+
+
+def build_mcp_registry_manifest(base_url: str, live_pstn_ready: bool = True) -> dict[str, Any]:
+    """Build `/.well-known/mcp.json` discovery manifest combining Official Registry + SEP-2127 Server Card metadata."""
+    card = build_mcp_server_card(base_url, live_pstn_ready=live_pstn_ready)
+    card["$schema"] = OFFICIAL_MCP_SCHEMA_URL
+    return card
+
+
+def build_ai_catalog_manifest(base_url: str) -> dict[str, Any]:
+    """Build RFC 8615 / SEP-2127 Domain AI Catalog (`/.well-known/ai-catalog.json`)."""
+    clean = base_url.rstrip("/")
+    entries = [
+        {
+            "identifier": "urn:air:manavagarwal.github.io:mcp:ringscout",
+            "name": "io.github.manavagarwal/ringscout",
+            "kind": "mcp-server",
+            "type": "application/mcp-server-card+json",
+            "mediaType": "application/mcp-server-card+json",
+            "url": f"{clean}/.well-known/mcp/server-card.json",
+            "endpoint": f"{clean}/mcp",
+            "transport": "streamable-http",
+        },
+        {
+            "identifier": "urn:air:manavagarwal.github.io:a2a:ringscout",
+            "name": "ringscout-a2a-agent",
+            "kind": "a2a-agent",
+            "type": "application/a2a-agent-card+json",
+            "mediaType": "application/a2a-agent-card+json",
+            "url": f"{clean}/.well-known/agent-card.json",
+            "endpoint": f"{clean}/a2a",
+            "protocolVersion": "1.0",
+        },
+        {
+            "identifier": "urn:air:manavagarwal.github.io:openapi:ringscout",
+            "name": "ringscout-openapi-actions",
+            "kind": "openapi-actions",
+            "type": "application/vnd.oai.openapi+json",
+            "mediaType": "application/vnd.oai.openapi+json",
+            "url": f"{clean}/openapi-actions.json",
+            "endpoint": f"{clean}/api/v1/scout",
+        },
+        {
+            "identifier": "urn:air:manavagarwal.github.io:llms:ringscout",
+            "name": "ringscout-llms-guide",
+            "kind": "llms-txt",
+            "type": "text/markdown",
+            "mediaType": "text/markdown",
+            "url": f"{clean}/llms.txt",
+        },
+    ]
+    return {
+        "specVersion": "1.0",
+        "version": "1.0",
+        "domain": clean,
+        "service": "RingScout — Parallel Google Maps Voice Scout",
+        "updatedAt": "2026-11-24T00:00:00Z",
+        "entries": entries,
+        "catalog": entries,
     }

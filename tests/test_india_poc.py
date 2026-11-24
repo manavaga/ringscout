@@ -2088,4 +2088,167 @@ def test_yauatcha_ivr_and_human_pickup_regression() -> None:
     assert is_live_human_pickup_after_ivr("Hello.") is True
 
 
+def test_mcp_full_discovery_sep2127_sse_batch_prompts_resources_and_registry_schema(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify 2026 MCP Directory & Agent Discovery stack: SEP-2127 Server Card, AI Catalog, 2025-12-11 server.json,
+    CORS session headers, annotations, resources, prompts, JSON-RPC batches, HTTP domain auth, and legacy SSE."""
+    monkeypatch.setenv("RINGSCOUT_PUBLIC_CONSUMER_ACCESS", "1")
+    monkeypatch.setenv("RINGSCOUT_ADMIN_PASSCODE", "admin-vault-999")
+    monkeypatch.setenv("MCP_REGISTRY_PUBLIC_KEY", "dGVzdF9lZDI1NTE5X3B1YmxpY19rZXlfYmFzZTY0")
+
+    app = create_app(synthesize_audio=False, require_provenance=True)
+    client = TestClient(app)
+
+    # 1. Directory Uptime & Official 2025-12-11 Registry Schema invariants
+    assert client.get("/ping").status_code == 200
+    assert client.head("/ping").status_code == 200
+    assert client.get("/mcp/health").status_code == 200
+    assert client.head("/mcp").status_code == 200
+    assert client.delete("/mcp").status_code == 204
+
+    srv = client.get("/server.json").json()
+    assert srv["$schema"].endswith("2025-12-11/server.schema.json")
+    assert 1 <= len(srv["description"]) <= 100
+    assert "status" not in srv
+    assert {r["type"] for r in srv["remotes"]} == {"streamable-http", "sse"}
+
+    # Checked-in repo server.json matches strict length & schema rules
+    repo_srv = json.loads((Path(__file__).resolve().parents[1] / "server.json").read_text(encoding="utf-8"))
+    assert repo_srv["$schema"] == srv["$schema"]
+    assert 1 <= len(repo_srv["description"]) <= 100
+    assert "status" not in repo_srv
+
+    # 2. SEP-2127 Server Card, AI Catalog, and HTTP Domain Verification (/.well-known/mcp-registry-auth)
+    sc_resp = client.get("/.well-known/mcp/server-card.json")
+    assert sc_resp.status_code == 200
+    assert "application/mcp-server-card+json" in sc_resp.headers["content-type"]
+    sc_json = sc_resp.json()
+    assert sc_json["$schema"].endswith("v1/server-card.schema.json")
+    assert 1 <= len(sc_json["description"]) <= 100
+    assert isinstance(sc_json["repository"], dict) and sc_json["repository"]["source"] == "github"
+    assert "scout_places_on_google_maps" in sc_json["tools"]
+    assert len(sc_json["prompts"]) >= 3
+    assert len(sc_json["resources"]) >= 3
+
+    cat_resp = client.get("/.well-known/ai-catalog.json")
+    assert "application/ai-catalog+json" in cat_resp.headers["content-type"]
+    cat_json = cat_resp.json()
+    assert cat_json["specVersion"] == "1.0"
+    assert len(cat_json["entries"]) >= 4
+    assert all("identifier" in e and "type" in e and "url" in e for e in cat_json["entries"])
+    assert any(e["type"] == "application/mcp-server-card+json" for e in cat_json["entries"])
+    assert any(e["type"] == "application/a2a-agent-card+json" for e in cat_json["entries"])
+
+    reg_auth = client.get("/.well-known/mcp-registry-auth")
+    assert reg_auth.status_code == 200
+    assert reg_auth.text == "v=MCPv1; k=ed25519; p=dGVzdF9lZDI1NTE5X3B1YmxpY19rZXlfYmFzZTY0"
+
+    # 3. Browser MCP Inspector CORS preflight allows DELETE/HEAD, and POST /mcp exposes Mcp-Session-Id
+    cors_opt = client.options(
+        "/mcp",
+        headers={
+            "Origin": "https://inspector.modelcontextprotocol.io",
+            "Access-Control-Request-Method": "DELETE",
+            "Access-Control-Request-Headers": "content-type,mcp-session-id",
+        },
+    )
+    assert cors_opt.status_code == 200
+    assert "DELETE" in cors_opt.headers.get("access-control-allow-methods", "")
+    assert "mcp-session-id" in cors_opt.headers.get("access-control-allow-headers", "").lower()
+
+    # 4. Full MCP Handshake: protocol negotiation, session ID, instructions, annotations, resources, prompts, batch
+    init_resp = client.post(
+        "/mcp",
+        headers={"Origin": "https://inspector.modelcontextprotocol.io"},
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"protocolVersion": "2099-99-99", "capabilities": {}},
+        },
+    )
+    assert init_resp.status_code == 200
+    assert "Mcp-Session-Id" in init_resp.headers.get("access-control-expose-headers", "")
+    sid = init_resp.headers.get("mcp-session-id")
+    assert sid and sid.startswith("mcp_")
+    init_res = init_resp.json()["result"]
+    assert init_res["protocolVersion"] == "2025-06-18"
+    assert "RingScout" in init_res["instructions"]
+
+    notif = client.post(
+        "/mcp",
+        headers={"Mcp-Session-Id": sid},
+        json={"jsonrpc": "2.0", "method": "notifications/initialized"},
+    )
+    assert notif.status_code == 202
+
+    batch_resp = client.post(
+        "/mcp",
+        headers={"Mcp-Session-Id": sid},
+        json=[
+            {"jsonrpc": "2.0", "id": 10, "method": "ping"},
+            {"jsonrpc": "2.0", "id": 11, "method": "tools/list"},
+            {"jsonrpc": "2.0", "id": 12, "method": "resources/list"},
+            {"jsonrpc": "2.0", "id": 13, "method": "prompts/list"},
+        ],
+    )
+    assert batch_resp.status_code == 200
+    batch_items = {item["id"]: item["result"] for item in batch_resp.json()}
+    assert batch_items[10] == {}
+    tools_by_name = {t["name"]: t for t in batch_items[11]["tools"]}
+    assert tools_by_name["get_ringscout_pricing_and_status"]["annotations"]["readOnlyHint"] is True
+    assert tools_by_name["scout_places_on_google_maps"]["annotations"]["openWorldHint"] is True
+    assert len(batch_items[12]["resources"]) == 3
+    assert len(batch_items[13]["prompts"]) == 3
+
+    res_read = client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": 20,
+            "method": "resources/read",
+            "params": {"uri": "ringscout://locations/india-neighbourhoods"},
+        },
+    ).json()
+    assert "Mumbai" in res_read["result"]["contents"][0]["text"]
+
+    prompt_get = client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": 21,
+            "method": "prompts/get",
+            "params": {
+                "name": "scout_restaurant_table",
+                "arguments": {"city": "Mumbai", "locality": "Bandra West", "party_size": "4"},
+            },
+        },
+    ).json()
+    assert "scout_places_on_google_maps" in prompt_get["result"]["messages"][0]["content"]["text"]
+
+    # Legacy POST /messages standalone compatibility + 404 on unknown session_id + batch size guard
+    legacy_msg = client.post(
+        "/messages",
+        json={"jsonrpc": "2.0", "id": 30, "method": "ping"},
+    )
+    assert legacy_msg.status_code == 200
+    assert legacy_msg.json()["result"] == {}
+    assert client.post("/messages?session_id=nonexistent_sid", json={"jsonrpc": "2.0", "id": 31, "method": "ping"}).status_code == 404
+
+    oversized_batch = client.post(
+        "/mcp",
+        json=[{"jsonrpc": "2.0", "id": i, "method": "ping"} for i in range(40)],
+    ).json()
+    assert oversized_batch["error"]["code"] == -32600
+
+    unknown_tool = client.post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "id": 32, "method": "tools/call", "params": {"name": "no_such_tool", "arguments": {}}},
+    ).json()
+    assert unknown_tool["error"]["code"] == -32602
+
+
+
+
 
