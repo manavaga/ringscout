@@ -32,14 +32,14 @@ python3 scripts/verify_mcp_discovery.py https://ringscout-hom7ntreuq-uc.a.run.ap
 ### A. Push Public Repository to GitHub (Prerequisite for GitHub-Verified Directories)
 Smithery, Glama, Awesome-MCP-Servers, and `io.github.<username>/*` namespaces verify against a public GitHub repo (zero secrets are stored in git — verified by `test_spa_vs_salon_specific_place_dashboard_and_zero_repo_secrets`):
 ```bash
-git remote add origin https://github.com/manavagarwal/ringscout.git
+git remote add origin https://github.com/manavaga/ringscout.git
 git push -u origin main
 ```
 
 ### B. Official MCP Registry (`registry.modelcontextprotocol.io`)
 PulseMCP, Glama, VS Code, and Cursor sync directly from the Official MCP Registry upstream:
 ```bash
-# Option 1: GitHub Namespace (io.github.manavagarwal/ringscout)
+# Option 1: GitHub Namespace (io.github.manavaga/ringscout)
 ~/.local/bin/mcp-publisher login github
 ~/.local/bin/mcp-publisher publish
 
@@ -49,7 +49,7 @@ PulseMCP, Glama, VS Code, and Cursor sync directly from the Official MCP Registr
 ```
 
 ### C. Major MCP Marketplaces & Directories
-1. **Smithery.ai (`smithery.ai/new`)**: Connect `github.com/manavagarwal/ringscout` or submit remote Streamable HTTP URL `https://ringscout-hom7ntreuq-uc.a.run.app/mcp` (`smithery.yaml` is pre-configured in root).
+1. **Smithery.ai (`smithery.ai/new`)**: Connect `github.com/manavaga/ringscout` or submit remote Streamable HTTP URL `https://ringscout-hom7ntreuq-uc.a.run.app/mcp` (`smithery.yaml` is pre-configured in root).
 2. **Glama.ai (`glama.ai/mcp/servers`)**: Auto-syncs from Official MCP Registry, or submit repo URL directly (`glama.json` claims maintainer ownership; `/ping` + tool `annotations` + `resources` + `prompts` earn top quality score).
 3. **PulseMCP (`pulsemcp.com/submit`) & MCP.so (`mcp.so/submit`)**: Submit `https://ringscout-hom7ntreuq-uc.a.run.app/mcp` and GitHub repo URL.
 4. **Awesome-MCP-Servers (`github.com/punkpeye/awesome-mcp-servers`)**: Open a 1-line PR adding `RingScout` under *Location & Travel / Voice & Telephony*.

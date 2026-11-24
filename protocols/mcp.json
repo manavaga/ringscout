@@ -1,12 +1,12 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.manavagarwal/ringscout",
+  "name": "io.github.manavaga/ringscout",
   "title": "RingScout — Call Google Maps Places for Live Availability & Rates",
   "description": "Calls open Google Maps places (+91) in parallel to verify live availability, slots, and INR rates.",
   "version": "3.0.0",
   "websiteUrl": "https://ringscout-hom7ntreuq-uc.a.run.app",
   "repository": {
-    "url": "https://github.com/manavagarwal/ringscout",
+    "url": "https://github.com/manavaga/ringscout",
     "source": "github"
   },
   "remotes": [

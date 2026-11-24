@@ -1994,7 +1994,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
     async def mcp_official_server_json(request: Request) -> dict[str, Any]:
         """Official Model Context Protocol Registry (`registry.modelcontextprotocol.io`) `server.json` manifest."""
         base_url = _derive_public_base_url(request, manager.pstn_adapter).rstrip("/")
-        ns_name = os.environ.get("MCP_REGISTRY_NAMESPACE", "io.github.manavagarwal/ringscout").strip()
+        ns_name = os.environ.get("MCP_REGISTRY_NAMESPACE", "io.github.manavaga/ringscout").strip()
         return build_official_server_json(base_url, namespace_name=ns_name)
 
     # --- Four Cleanly Separated Frontend Surfaces ---

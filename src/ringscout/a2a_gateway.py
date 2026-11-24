@@ -2099,7 +2099,7 @@ def build_openapi_actions_spec(base_url: str) -> dict[str, Any]:
 
 def build_official_server_json(
     base_url: str,
-    namespace_name: str = "io.github.manavagarwal/ringscout",
+    namespace_name: str = "io.github.manavaga/ringscout",
 ) -> dict[str, Any]:
     """Build strict `2025-12-11` Official MCP Registry `server.json` (`description` <= 100 chars)."""
     clean = base_url.rstrip("/")
@@ -2111,7 +2111,7 @@ def build_official_server_json(
         "version": "3.0.0",
         "websiteUrl": clean,
         "repository": {
-            "url": "https://github.com/manavagarwal/ringscout",
+            "url": "https://github.com/manavaga/ringscout",
             "source": "github",
         },
         "remotes": [
@@ -2133,13 +2133,13 @@ def build_mcp_server_card(base_url: str, live_pstn_ready: bool = True) -> dict[s
     pay_state = masked_payment_status()
     return {
         "$schema": SEP2127_SERVER_CARD_SCHEMA_URL,
-        "name": "io.github.manavagarwal/ringscout",
+        "name": "io.github.manavaga/ringscout",
         "title": "RingScout — Call Google Maps Places for Live Availability & Rates",
         "version": "3.0.0",
         "description": MCP_SHORT_DESCRIPTION,
         "websiteUrl": clean,
         "repository": {
-            "url": "https://github.com/manavagarwal/ringscout",
+            "url": "https://github.com/manavaga/ringscout",
             "source": "github",
         },
         "remotes": [
@@ -2195,8 +2195,8 @@ def build_ai_catalog_manifest(base_url: str) -> dict[str, Any]:
     clean = base_url.rstrip("/")
     entries = [
         {
-            "identifier": "urn:air:manavagarwal.github.io:mcp:ringscout",
-            "name": "io.github.manavagarwal/ringscout",
+            "identifier": "urn:air:manavaga.github.io:mcp:ringscout",
+            "name": "io.github.manavaga/ringscout",
             "kind": "mcp-server",
             "type": "application/mcp-server-card+json",
             "mediaType": "application/mcp-server-card+json",
@@ -2205,7 +2205,7 @@ def build_ai_catalog_manifest(base_url: str) -> dict[str, Any]:
             "transport": "streamable-http",
         },
         {
-            "identifier": "urn:air:manavagarwal.github.io:a2a:ringscout",
+            "identifier": "urn:air:manavaga.github.io:a2a:ringscout",
             "name": "ringscout-a2a-agent",
             "kind": "a2a-agent",
             "type": "application/a2a-agent-card+json",
@@ -2215,7 +2215,7 @@ def build_ai_catalog_manifest(base_url: str) -> dict[str, Any]:
             "protocolVersion": "1.0",
         },
         {
-            "identifier": "urn:air:manavagarwal.github.io:openapi:ringscout",
+            "identifier": "urn:air:manavaga.github.io:openapi:ringscout",
             "name": "ringscout-openapi-actions",
             "kind": "openapi-actions",
             "type": "application/vnd.oai.openapi+json",
@@ -2224,7 +2224,7 @@ def build_ai_catalog_manifest(base_url: str) -> dict[str, Any]:
             "endpoint": f"{clean}/api/v1/scout",
         },
         {
-            "identifier": "urn:air:manavagarwal.github.io:llms:ringscout",
+            "identifier": "urn:air:manavaga.github.io:llms:ringscout",
             "name": "ringscout-llms-guide",
             "kind": "llms-txt",
             "type": "text/markdown",
