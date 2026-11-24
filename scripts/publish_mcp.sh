@@ -44,19 +44,14 @@ fi
 # 2. Create public GitHub repository (if needed) & push main
 echo ""
 echo "==> Step 2/4: Pushing public repository https://github.com/${REPO_SLUG} ..."
-git remote set-url origin "https://github.com/${REPO_SLUG}.git" 2>/dev/null || git remote add origin "https://github.com/${REPO_SLUG}.git"
-
 if ! "${GH_BIN}" repo view "${REPO_SLUG}" >/dev/null 2>&1; then
   "${GH_BIN}" repo create "${REPO_SLUG}" \
     --public \
-    --source=. \
-    --remote=origin \
     --homepage="https://ringscout-hom7ntreuq-uc.a.run.app" \
-    --description="Parallel AI voice scout that calls real open Google Maps businesses (+91) to verify live availability, wait times, and INR rates with 24kHz WAV proof." \
-    --push
-else
-  git push -u origin main
+    --description="Parallel AI voice scout that calls real open Google Maps businesses (+91) to verify live availability, wait times, and INR rates with 24kHz WAV proof."
 fi
+git remote set-url origin "https://github.com/${REPO_SLUG}.git" 2>/dev/null || git remote add origin "https://github.com/${REPO_SLUG}.git"
+git push -u origin main
 echo "  ✓ Code pushed to https://github.com/${REPO_SLUG}"
 
 # 3. Validate & Publish to Official MCP Registry
