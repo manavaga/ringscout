@@ -18,12 +18,13 @@ echo "  Live MCP URL     : https://ringscout-hom7ntreuq-uc.a.run.app/mcp"
 echo "=================================================================="
 echo ""
 
-# 1. Authenticate GitHub CLI (device code flow safe over SSH)
+# 1. Authenticate GitHub CLI (device code flow safe over SSH; --insecure-storage bypasses locked GNOME Keyring on headless Cloudtop)
+export DBUS_SESSION_BUS_ADDRESS=""
 if ! "${GH_BIN}" auth status --hostname github.com >/dev/null 2>&1; then
   echo "==> Step 1/4: Sign in to GitHub as '${GH_USER}'"
   echo "    (Copy the 8-character one-time code shown below and open https://github.com/login/device on your Mac browser)"
   echo ""
-  BROWSER=echo "${GH_BIN}" auth login --hostname github.com --git-protocol https --web
+  BROWSER=echo "${GH_BIN}" auth login --hostname github.com --git-protocol https --web --insecure-storage
 fi
 
 ACTIVE_GH_USER="$("${GH_BIN}" api user --jq '.login')"
@@ -65,9 +66,10 @@ echo "==> Step 3/4: Validating server.json against Official MCP Registry..."
 
 echo ""
 echo "==> Step 4/4: Authenticating & Publishing to registry.modelcontextprotocol.io..."
-echo "    (If prompted with a GitHub device code, open https://github.com/login/device on your Mac browser)"
-echo ""
-BROWSER=echo "${MCP_PUB}" login github
+if ! "${MCP_PUB}" login github --token "$("${GH_BIN}" auth token --hostname github.com)" >/dev/null 2>&1; then
+  echo "    (Approve the MCP Registry GitHub device code at https://github.com/login/device)"
+  BROWSER=echo "${MCP_PUB}" login github
+fi
 "${MCP_PUB}" publish
 
 echo ""
