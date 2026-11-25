@@ -49,20 +49,52 @@ class RuntimePaymentConfig:
     """In-memory operator configuration for Phase A (open) vs Phase B (freemium / paid) & Stripe keys."""
 
     gate_mode: str = "off"  # "off" (Phase A live open), "freemium" (N free/day then paid), "required"
-    free_daily_calls_per_client: int = 10
+    free_daily_calls_per_client: int = 5
+    global_daily_free_pstn_legs: int = 25
     stripe_secret_key: str = ""
     stripe_checkout_url: str = ""
 
 
 _RUNTIME_PAY_CFG = RuntimePaymentConfig(
     gate_mode=os.environ.get("RINGSCOUT_PAYMENT_GATE_MODE", "off").strip().lower() or "off",
-    free_daily_calls_per_client=int(os.environ.get("RINGSCOUT_FREE_DAILY_CALLS", "10")),
+    free_daily_calls_per_client=int(os.environ.get("RINGSCOUT_FREE_DAILY_CALLS", "5")),
+    global_daily_free_pstn_legs=int(os.environ.get("RINGSCOUT_GLOBAL_DAILY_FREE_PSTN_CAP", "25")),
     stripe_secret_key=os.environ.get("STRIPE_SECRET_KEY", "").strip(),
     stripe_checkout_url=os.environ.get("STRIPE_CHECKOUT_URL", "").strip(),
 )
 
 # Per-(UTC-day, client-fingerprint) usage counter for Phase A safety cap & Phase B freemium tier
 _DAILY_CLIENT_USAGE: OrderedDict[str, int] = OrderedDict()
+_DAILY_GLOBAL_FREE_PSTN_LEGS: OrderedDict[str, int] = OrderedDict()
+
+_AUTOMATED_SCANNER_UA_MARKERS: tuple[str, ...] = (
+    "brickbluebot",
+    "brick.blue",
+    "agentvalcon",
+    "sealkeeper",
+    "sentineloracle",
+    "alalanet-prober",
+    "smithery",
+    "glama",
+    "pulsemcp",
+    "x402scan",
+    "headlesschrome",
+    "uptimerobot",
+    "pingdom",
+    "statuscake",
+    "spider",
+    "crawler",
+    "prober",
+    "scanner",
+)
+
+
+def is_automated_scanner_user_agent(user_agent: str | None) -> bool:
+    """Detect automated MCP/A2A directory scanners so unpaid bot probes receive 402 instead of ringing real +91 phones."""
+    ua = (user_agent or "").strip().lower()
+    if not ua:
+        return False
+    return any(tok in ua for tok in _AUTOMATED_SCANNER_UA_MARKERS)
 
 
 def get_payment_gate_mode() -> str:
@@ -85,6 +117,7 @@ def update_runtime_payment_config(
     *,
     gate_mode: str | None = None,
     free_daily_calls_per_client: int | None = None,
+    global_daily_free_pstn_legs: int | None = None,
     stripe_secret_key: str | None = None,
     stripe_checkout_url: str | None = None,
 ) -> dict[str, Any]:
@@ -92,6 +125,8 @@ def update_runtime_payment_config(
         _RUNTIME_PAY_CFG.gate_mode = gate_mode.lower()
     if free_daily_calls_per_client is not None and 1 <= free_daily_calls_per_client <= 500:
         _RUNTIME_PAY_CFG.free_daily_calls_per_client = free_daily_calls_per_client
+    if global_daily_free_pstn_legs is not None and 1 <= global_daily_free_pstn_legs <= 2000:
+        _RUNTIME_PAY_CFG.global_daily_free_pstn_legs = global_daily_free_pstn_legs
     if stripe_secret_key is not None:
         _RUNTIME_PAY_CFG.stripe_secret_key = stripe_secret_key.strip()
     if stripe_checkout_url is not None:
@@ -105,6 +140,7 @@ def masked_payment_status() -> dict[str, Any]:
     return {
         "gate_mode": get_payment_gate_mode(),
         "free_daily_calls_per_client": _RUNTIME_PAY_CFG.free_daily_calls_per_client,
+        "global_daily_free_pstn_legs": _RUNTIME_PAY_CFG.global_daily_free_pstn_legs,
         "stripe_configured": bool(sk),
         "stripe_key_masked": masked_sk,
         "stripe_mode": "live" if sk.startswith("sk_live_") else ("test" if sk.startswith("sk_test_") else "mpp_hmac_ready"),
@@ -124,6 +160,21 @@ def check_and_increment_free_quota(client_id: str) -> tuple[bool, int, int]:
     while len(_DAILY_CLIENT_USAGE) > 4096:
         _DAILY_CLIENT_USAGE.popitem(last=False)
     return True, used + 1, limit
+
+
+def check_and_increment_global_free_pstn_legs(requested_legs: int) -> tuple[bool, int, int]:
+    """Global daily circuit breaker on unpaid free-tier real PSTN phone legs."""
+    day = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+    env_cap = os.environ.get("RINGSCOUT_GLOBAL_DAILY_FREE_PSTN_CAP", "").strip()
+    cap = int(env_cap) if env_cap.isdigit() else max(1, _RUNTIME_PAY_CFG.global_daily_free_pstn_legs)
+    legs = max(1, requested_legs)
+    used = _DAILY_GLOBAL_FREE_PSTN_LEGS.get(day, 0)
+    if used + legs > cap:
+        return False, used, cap
+    _DAILY_GLOBAL_FREE_PSTN_LEGS[day] = used + legs
+    while len(_DAILY_GLOBAL_FREE_PSTN_LEGS) > 64:
+        _DAILY_GLOBAL_FREE_PSTN_LEGS.popitem(last=False)
+    return True, used + legs, cap
 
 
 def _b64url_encode(data: bytes) -> str:

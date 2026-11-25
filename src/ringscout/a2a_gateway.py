@@ -45,8 +45,10 @@ from ringscout.stripe_protocol import (
     build_stripe_mpp_challenge,
     build_stripe_payment_receipt_header,
     check_and_increment_free_quota,
+    check_and_increment_global_free_pstn_legs,
     get_effective_checkout_url,
     get_payment_gate_mode,
+    is_automated_scanner_user_agent,
     masked_payment_status,
     verify_stripe_agent_payment,
 )
@@ -388,6 +390,10 @@ def validate_ap2_mandate(
     return mandate, digest, None
 
 
+class PaymentRequiredError(Exception):
+    """Raised when global free-tier PSTN circuit breaker or payment gate requires HTTP 402."""
+
+
 async def verify_a2a_payment(
     *,
     resource_url: str,
@@ -399,6 +405,8 @@ async def verify_a2a_payment(
     owner_passcode_valid: bool,
     stripe_token_header: str | None = None,
     client_fingerprint: str = "default_agent",
+    user_agent: str | None = None,
+    execution_mode: str = "auto",
 ) -> tuple[PaymentSettlement | None, str]:
     """Verify Phase A open quota OR Phase B `x402` v2 EIP-3009 / `Stripe MPP` (`SPT`/`PaymentIntent`) / `AP2`."""
     mandate, mandate_digest, mandate_err = validate_ap2_mandate(ap2_mandate, ap2_header_raw)
@@ -614,6 +622,30 @@ async def verify_a2a_payment(
     # 4. Phase A Open Out-of-the-Box Mode (`gate_mode == "off"`) or Phase B Freemium Quota (`gate_mode == "freemium"`)
     gate_mode = get_payment_gate_mode()
     if gate_mode in ("off", "freemium"):
+        if owner_passcode_valid:
+            return (
+                PaymentSettlement(
+                    rail="owner-passcode-direct",
+                    charged_usd=0.0,
+                    payer="owner_passcode",
+                    network="ringscout:owner",
+                    ap2_mandate_id=mandate.mandate_id if mandate else None,
+                    ap2_mandate_sha256=mandate_digest,
+                    sandbox=False,
+                ),
+                "ok",
+            )
+        if execution_mode != "swarm":
+            if is_automated_scanner_user_agent(user_agent):
+                return (
+                    None,
+                    "Automated directory scanner detected: attach Stripe MPP (`Authorization: Payment`) or x402 (`PAYMENT-SIGNATURE`) to place real-time +91 PSTN phone calls.",
+                )
+            if os.environ.get("RINGSCOUT_ALLOW_FREE_LIVE_PSTN", "1").strip() == "0":
+                return (
+                    None,
+                    "Payment Required ($0.75 USD via Stripe MPP / SPT or x402 Base USDC) to place real-time +91 PSTN phone calls.",
+                )
         within_quota, _used, limit = check_and_increment_free_quota(client_fingerprint)
         if within_quota:
             return (
@@ -735,11 +767,12 @@ def build_agent_card(base_url: str, live_pstn_ready: bool) -> dict[str, Any]:
                 "name": "Call Google Maps Places for Live Availability, Rates & Insights",
                 "description": (
                     "Finds open hotels, restaurants, spas, salons, clinics, MRI centers, petrol pumps, auto garages, "
-                    "or pharmacies on Google Maps, calls them in parallel in natural en-IN / hi-IN voice with "
-                    "street-landmark confidence markers, and returns verified availability, ₹ rates, key answers, "
-                    "and 24kHz .wav audio proof. Free unauthenticated calls run in instant sandbox preview; attach "
-                    "Stripe MPP (`Authorization: Payment <spt>`), x402 Base USDC (`PAYMENT-SIGNATURE`), or partner "
-                    "passcode (`X-RingScout-Passcode`) with `execution_mode='live_pstn'` to dial real +91 phone lines."
+                    "or pharmacies on Google Maps, dials their real +91 phone lines in parallel via Vobiz SIP + Gemini 3.8 Live "
+                    "(en-IN / hi-IN) with street-landmark confidence markers, and returns verified live availability, ₹ rates, "
+                    "key answers, and real recorded 24kHz .wav audio proof. Phase A includes a daily free real-call developer "
+                    "allowance (up to 2 places per free call; automated bots/crawlers receive HTTP 402); attach Stripe MPP "
+                    "(`Authorization: Payment <spt>`), x402 Base USDC (`PAYMENT-SIGNATURE`), or partner passcode "
+                    "(`X-RingScout-Passcode`) for up to 5 parallel live +91 calls."
                 ),
                 "tags": ["google-maps", "voice-ai", "hotels", "restaurants", "spas", "clinics", "petrol", "mri", "pharmacy", "mcp", "a2a"],
                 "inputModes": ["text", "application/json"],
@@ -765,7 +798,50 @@ async def execute_a2a_scout(
     origin_channel: str = "api_scout",
     caller_agent: str = "External AI Agent",
 ) -> dict[str, Any]:
-    """Run the end-to-end discovery + humanized parallel voice scout and return verifiable A2A JSON."""
+    """Run end-to-end Google Maps discovery + real-time +91 PSTN voice calls and return verifiable A2A JSON."""
+    paid_or_owner = owner_passcode_valid or (
+        not settlement.sandbox and settlement.charged_usd > 0
+    )
+    free_live_pstn_enabled = (
+        os.environ.get("RINGSCOUT_ALLOW_FREE_LIVE_PSTN", "1").strip() != "0"
+    )
+    auto_live_pstn_enabled = (
+        os.environ.get("A2A_AUTO_LIVE_PSTN", "1").strip() != "0"
+    )
+    pstn_infra_ready = manager.pstn_adapter.is_configured() and public_wss_ready
+
+    use_live_pstn = False
+    if req.execution_mode == "swarm":
+        use_live_pstn = False
+    elif req.execution_mode == "live_pstn":
+        if not paid_or_owner and not free_live_pstn_enabled:
+            raise ValueError(
+                "execution_mode='live_pstn' requires verified Stripe MPP / x402 payment or owner passcode."
+            )
+        if not pstn_infra_ready:
+            raise ValueError(
+                "execution_mode='live_pstn' requires active PSTN carrier credentials and public wss:// reachability."
+            )
+        use_live_pstn = True
+    else:
+        # Default execution_mode == "auto": ALWAYS dial real-time +91 PSTN lines whenever carrier is configured!
+        if pstn_infra_ready and auto_live_pstn_enabled:
+            if not paid_or_owner and not free_live_pstn_enabled:
+                raise PaymentRequiredError(
+                    "Real-time +91 PSTN calls require verified Stripe MPP / x402 payment or owner passcode."
+                )
+            use_live_pstn = True
+        elif os.environ.get("PYTEST_CURRENT_TEST") or not auto_live_pstn_enabled:
+            use_live_pstn = False
+        else:
+            raise ValueError(
+                "Live +91 PSTN carrier is not configured on this server; refusing to return simulated audio for a live call request."
+            )
+
+    eff_max_shops = (
+        min(req.max_shops, 2) if (use_live_pstn and not paid_or_owner) else req.max_shops
+    )
+
     disc = await discover_indian_shops(
         DiscoverRequest(
             query=req.query,
@@ -774,7 +850,7 @@ async def execute_a2a_scout(
             specific_place=req.specific_place,
             city=req.city,
             locality=req.locality,
-            max_shops=req.max_shops,
+            max_shops=eff_max_shops,
         )
     )
     manager.register_discovered_shops(disc)
@@ -782,6 +858,9 @@ async def execute_a2a_scout(
         return {
             "status": "no_open_shops_found",
             "place_category": disc.place_category.value,
+            "execution_mode": CallMode.LIVE_PSTN.value if use_live_pstn else CallMode.HINGLISH_SWARM.value,
+            "is_live_pstn": use_live_pstn,
+            "simulated_sandbox": not use_live_pstn,
             "settlement": {
                 "rail": settlement.rail,
                 "network": settlement.network,
@@ -795,28 +874,16 @@ async def execute_a2a_scout(
             "ranked_quotes": [],
         }
 
-    pstn_authorized = owner_passcode_valid or (
-        not settlement.sandbox and settlement.charged_usd > 0
-    )
-    use_live_pstn = False
-    if req.execution_mode == "live_pstn":
-        if not pstn_authorized:
-            raise ValueError(
-                "execution_mode='live_pstn' requires verified Stripe MPP / x402 payment or owner passcode."
+    selected_shops = disc.shops[:eff_max_shops]
+    if use_live_pstn and not paid_or_owner:
+        within_global, _used_legs, global_cap = check_and_increment_global_free_pstn_legs(
+            len(selected_shops)
+        )
+        if not within_global:
+            raise PaymentRequiredError(
+                f"Global daily free live-PSTN safety cap ({global_cap} phone legs/day) reached; "
+                "attach Stripe MPP (`Authorization: Payment`) or x402 (`PAYMENT-SIGNATURE`) to continue."
             )
-        if not manager.pstn_adapter.is_configured() or not public_wss_ready:
-            raise ValueError(
-                "execution_mode='live_pstn' requires active PSTN carrier credentials and public wss:// reachability."
-            )
-        use_live_pstn = True
-    elif (
-        req.execution_mode == "auto"
-        and pstn_authorized
-        and os.environ.get("A2A_AUTO_LIVE_PSTN", "").strip() == "1"
-        and manager.pstn_adapter.is_configured()
-        and public_wss_ready
-    ):
-        use_live_pstn = True
 
     mode = CallMode.LIVE_PSTN if use_live_pstn else CallMode.HINGLISH_SWARM
     quest = manager.create_quest(
@@ -830,7 +897,7 @@ async def execute_a2a_scout(
             mode=mode,
             origin_channel=origin_channel,
             caller_agent=caller_agent,
-            shops=disc.shops[: req.max_shops],
+            shops=selected_shops,
         )
     )
     try:
@@ -869,11 +936,13 @@ async def execute_a2a_scout(
                 stop_event=stop_ev,
                 pstn_adapter=manager.pstn_adapter,
             )
-            deadline = time.monotonic() if relayed_pstn else (time.monotonic() + 95.0)
+            deadline = time.monotonic() if relayed_pstn else (time.monotonic() + 165.0)
         else:
-            deadline = time.monotonic() + 95.0
+            deadline = time.monotonic() + 165.0
         if quest.status == "running" and deadline > time.monotonic():
             for idx, shop in enumerate(quest.shops):
+                if stop_ev.is_set() or quest.status != "running":
+                    break
                 if idx > 0:
                     await asyncio.sleep(random.uniform(1.8, 3.2))
                 asyncio.create_task(
@@ -886,6 +955,8 @@ async def execute_a2a_scout(
                 )
             while quest.status == "running" and time.monotonic() < deadline:
                 await asyncio.sleep(0.4)
+            if quest.status == "running":
+                await manager.stop_quest(quest.quest_id)
 
     ranked = quest.ranked_quotes()
     clean_base = base_url.rstrip("/")
@@ -896,6 +967,7 @@ async def execute_a2a_scout(
         CallOutcome.IVR_NAVIGATED,
     }
     connected_count = sum(1 for c in ranked if c.outcome in connected_outcomes)
+    is_real_pstn = mode == CallMode.LIVE_PSTN
 
     serialized_quotes: list[dict[str, Any]] = []
     for c in ranked:
@@ -916,6 +988,9 @@ async def execute_a2a_scout(
                 "open_status": c.shop.open_status,
                 "rating": c.shop.rating,
                 "maps_uri": c.shop.maps_uri,
+                "is_live_pstn": is_real_pstn,
+                "carrier_provider": c.carrier_provider,
+                "call_uuid": c.twilio_call_sid,
                 "call_outcome": c.outcome.value,
                 "dtmf_sent": c.dtmf_sent,
                 "duration_sec": c.duration_sec,
@@ -942,6 +1017,8 @@ async def execute_a2a_scout(
         "quest_id": quest.quest_id,
         "place_category": disc.place_category.value,
         "execution_mode": mode.value,
+        "is_live_pstn": is_real_pstn,
+        "simulated_sandbox": not is_real_pstn,
         "call_plan": quest.call_plan.model_dump() if quest.call_plan else None,
         "settlement": {
             "rail": settlement.rail,
@@ -1134,12 +1211,25 @@ async def parse_a2a_message_to_scout_request(
     return fallback_req
 
 
+def _peek_a2a_execution_mode(message_obj: dict[str, Any], metadata: dict[str, Any]) -> str:
+    if metadata.get("execution_mode") in ("auto", "live_pstn", "swarm"):
+        return str(metadata["execution_mode"])
+    for part in message_obj.get("parts") or []:
+        if isinstance(part, dict):
+            data = part.get("data")
+            if isinstance(data, dict) and data.get("execution_mode") in ("auto", "live_pstn", "swarm"):
+                return str(data["execution_mode"])
+    return "auto"
+
+
 def _format_a2a_summary_text(scout_result: dict[str, Any]) -> str:
     best = scout_result.get("best_match")
     quotes = scout_result.get("ranked_quotes") or []
     stl = scout_result.get("settlement") or {}
+    mode_lbl = scout_result.get("execution_mode")
+    prefix = "[SIMULATED SANDBOX — NO PHONE DIALED] " if scout_result.get("simulated_sandbox") else ""
     lines = [
-        f"RingScout completed {len(quotes)} parallel Google Maps (+91) calls via `{scout_result.get('execution_mode')}` "
+        f"{prefix}RingScout completed {len(quotes)} parallel Google Maps (+91) calls via `{mode_lbl}` "
         f"(rail: `{stl.get('rail')}`, charged: `${stl.get('charged_usd', 0):.2f}`)."
     ]
     if best:
@@ -1172,6 +1262,7 @@ async def handle_a2a_jsonrpc(
     owner_passcode_valid: bool,
     stripe_token_header: str | None = None,
     client_fingerprint: str = "a2a_agent",
+    user_agent: str | None = None,
 ) -> tuple[int, dict[str, str], dict[str, Any]]:
     """Handle official Google A2A v1.0 JSON-RPC (`message/send`, `tasks/get`, `tasks/cancel`)."""
     method = str(rpc_body.get("method") or "")
@@ -1241,6 +1332,7 @@ async def handle_a2a_jsonrpc(
                     },
                 )
 
+        peek_mode = _peek_a2a_execution_mode(message_obj, metadata)
         settlement, reason = await verify_a2a_payment(
             resource_url=resource_url,
             payment_sig_header=eff_sig,
@@ -1251,6 +1343,8 @@ async def handle_a2a_jsonrpc(
             owner_passcode_valid=owner_passcode_valid,
             stripe_token_header=eff_stripe_tok,
             client_fingerprint=client_fingerprint,
+            user_agent=user_agent,
+            execution_mode=peek_mode,
         )
         if settlement is None:
             hdrs, challenge_body = build_402_challenge(resource_url, detail=reason)
@@ -1307,6 +1401,13 @@ async def handle_a2a_jsonrpc(
                 owner_passcode_valid=owner_passcode_valid,
                 origin_channel="a2a",
                 caller_agent="Google A2A Agent",
+            )
+        except PaymentRequiredError as pay_exc:
+            hdrs, body = build_402_challenge(resource_url, detail=str(pay_exc))
+            return (
+                402,
+                hdrs,
+                {"jsonrpc": "2.0", "id": req_id, "error": {"code": 402, "message": str(pay_exc), "data": body}},
             )
         except Exception as exc:
             return (
@@ -1651,6 +1752,7 @@ async def handle_mcp_jsonrpc(
     owner_passcode_valid: bool,
     stripe_token_header: str | None = None,
     client_fingerprint: str = "mcp_connector",
+    user_agent: str | None = None,
     out_headers: dict[str, str] | None = None,
     incoming_session_id: str | None = None,
 ) -> dict[str, Any] | None:
@@ -1845,6 +1947,7 @@ async def handle_mcp_jsonrpc(
                 )
                 else None
             )
+            mcp_exec_mode = str(args.get("execution_mode") or "auto")
             settlement, reason = await verify_a2a_payment(
                 resource_url=f"{clean_base}/mcp",
                 payment_sig_header=eff_payment_sig,
@@ -1855,6 +1958,8 @@ async def handle_mcp_jsonrpc(
                 owner_passcode_valid=owner_passcode_valid,
                 stripe_token_header=eff_stripe_tok,
                 client_fingerprint=client_fingerprint,
+                user_agent=user_agent,
+                execution_mode=mcp_exec_mode,
             )
             if settlement is None:
                 _, challenge_body = build_402_challenge(
@@ -1898,7 +2003,7 @@ async def handle_mcp_jsonrpc(
                     preferred_tone=VocalTone(
                         str(args.get("preferred_tone") or default_tone)
                     ),
-                    execution_mode=str(args.get("execution_mode") or "auto"),  # type: ignore[arg-type]
+                    execution_mode=mcp_exec_mode,  # type: ignore[arg-type]
                 )
                 result_payload = await execute_a2a_scout(
                     req=scout_req,
@@ -1923,6 +2028,23 @@ async def handle_mcp_jsonrpc(
                             }
                         ],
                         "isError": False,
+                    },
+                }
+            except PaymentRequiredError as pay_exc:
+                _, challenge_body = build_402_challenge(
+                    f"{clean_base}/mcp", detail=str(pay_exc)
+                )
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": json.dumps(challenge_body, indent=2),
+                            }
+                        ],
+                        "isError": True,
                     },
                 }
             except Exception as exc:

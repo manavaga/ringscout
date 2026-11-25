@@ -1728,8 +1728,22 @@ def test_judge_p0_p1_regressions_quests_list_mpp_nonce_pstn_gate_and_pi_validati
     client = TestClient(app)
 
     try:
-        # 2. Unauthenticated Phase A caller trying execution_mode='live_pstn' is blocked (no toll-fraud!)
-        pstn_attempt = client.post(
+        # 2. Automated directory crawlers (BrickBlueBot, AgentValCon) & paid-only mode block unpaid toll-fraud (402)
+        bot_attempt = client.post(
+            "/api/v1/scout",
+            headers={"User-Agent": "BrickBlueBot/1.0"},
+            json={
+                "place_category": "hotel",
+                "item_question": "Room tonight",
+                "execution_mode": "auto",
+                "max_shops": 1,
+            },
+        )
+        assert bot_attempt.status_code == 402
+        assert "Automated directory scanner" in bot_attempt.json()["error"]
+
+        monkeypatch.setenv("RINGSCOUT_ALLOW_FREE_LIVE_PSTN", "0")
+        pstn_paid_only = client.post(
             "/api/v1/scout",
             json={
                 "place_category": "hotel",
@@ -1738,8 +1752,21 @@ def test_judge_p0_p1_regressions_quests_list_mpp_nonce_pstn_gate_and_pi_validati
                 "max_shops": 1,
             },
         )
-        assert pstn_attempt.status_code == 400
-        assert "verified Stripe MPP / x402 payment or owner passcode" in pstn_attempt.json()["detail"]
+        assert pstn_paid_only.status_code == 402
+        monkeypatch.setenv("RINGSCOUT_ALLOW_FREE_LIVE_PSTN", "1")
+
+        # When carrier credentials are unconfigured on test server, live_pstn fails closed (never fakes a call!)
+        pstn_unconfigured = client.post(
+            "/api/v1/scout",
+            json={
+                "place_category": "hotel",
+                "item_question": "Room tonight",
+                "execution_mode": "live_pstn",
+                "max_shops": 1,
+            },
+        )
+        assert pstn_unconfigured.status_code == 400
+        assert "active PSTN carrier credentials" in pstn_unconfigured.json()["detail"]
 
         # 3. Swarm scout succeeds, cites street landmark + caller_name, AND GET /api/quests returns 200 OK (no 500!)
         ok_scout = client.post(
@@ -2275,6 +2302,190 @@ def test_mcp_full_discovery_sep2127_sse_batch_prompts_resources_and_registry_sch
     assert trk["mcp_jsonrpc_methods"]["ping"] >= 2
     ep_names = {e["endpoint"] for e in trk["endpoints"]}
     assert "POST /mcp" in ep_names
+
+
+def test_a2a_and_mcp_auto_mode_dials_real_live_pstn_never_silent_simulation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify external A2A & MCP callers (`execution_mode='auto'`) dial REAL Vobiz +91 PSTN lines
+    when carrier is configured, cap free calls to <=2 shops, block bots with 402, and enforce global leg cap."""
+    from ringscout.models import LiveCarrierConfig, PlaceCategory
+    from ringscout.stripe_protocol import update_runtime_payment_config
+
+    monkeypatch.setenv("RINGSCOUT_PUBLIC_CONSUMER_ACCESS", "1")
+    monkeypatch.setenv("RINGSCOUT_ADMIN_PASSCODE", "admin-vault-999")
+    monkeypatch.setenv("RINGSCOUT_PAYMENT_GATE_MODE", "off")
+    monkeypatch.setenv("RINGSCOUT_GLOBAL_DAILY_FREE_PSTN_CAP", "3")
+
+    async def fake_discover(req: DiscoverRequest) -> DiscoverResponse:
+        all_shops = [
+            IndianShopTarget(
+                shop_id=f"shop_{i}",
+                name=f"Bandra Venue {i}",
+                phone_e164=f"+91225033355{i}",
+                phone_display=f"+91 22 5033 355{i}",
+                address="Linking Road, Bandra West, Mumbai 400050",
+                locality="Bandra West",
+                city="Mumbai",
+                open_status="OPEN NOW",
+                rating=4.7,
+            )
+            for i in range(1, 5)
+        ]
+        return DiscoverResponse(
+            query="restaurants open now",
+            place_category=PlaceCategory.RESTAURANT,
+            city="Mumbai",
+            locality="Bandra West",
+            source="vertex_google_maps_grounding",
+            shops=all_shops[: req.max_shops],
+        )
+
+    dialed_phones: list[str] = []
+
+    async def fake_place_india_call(
+        self: LiveIndiaPstnAdapter,
+        quest: QuestSession,
+        shop: IndianShopTarget,
+        public_base_url: str,
+        publish: Any,
+    ) -> str:
+        dialed_phones.append(shop.phone_e164)
+        c = quest.calls[shop.shop_id]
+        c.carrier_provider = "vobiz"
+        c.twilio_call_sid = f"vobiz_live_{shop.shop_id}"
+        c.status = CallStatus.COMPLETED
+        c.outcome = CallOutcome.CONNECTED_QUOTE
+        c.duration_sec = 34.2
+        c.transcript = [
+            TranscriptTurn(speaker="shopkeeper", text="Hello, Bandra Venue, how may I help you?", timestamp_sec=2.1),
+            TranscriptTurn(speaker="agent", text="Hi, checking if a table for 4 is open tonight at 8:30 PM?", timestamp_sec=5.4),
+            TranscriptTurn(speaker="shopkeeper", text="Yes sir, 8:30 PM table for 4 is available, cover is ₹2,000.", timestamp_sec=11.8),
+        ]
+        c.quote = InrQuote(
+            in_stock=True,
+            availability_label="TABLE AVAILABLE",
+            price_inr=2000.0,
+            price_display="₹2,000",
+            eta_or_slot="Tonight 8:30 PM",
+            notes="Confirmed live with receptionist",
+            key_insights=["8:30 PM table for 4 available"],
+        )
+        self._audio_store[(quest.quest_id, shop.shop_id)] = generate_busy_tone_wav(0.25)
+        c.audio_url = f"/api/quests/{quest.quest_id}/calls/{shop.shop_id}/audio.wav"
+        if all(x.status == CallStatus.COMPLETED for x in quest.calls.values()):
+            quest.status = "completed"
+        return c.twilio_call_sid
+
+    monkeypatch.setattr(a2a_gateway, "discover_indian_shops", fake_discover)
+    monkeypatch.setattr(LiveIndiaPstnAdapter, "place_india_call", fake_place_india_call)
+
+    app = create_app(synthesize_audio=False, require_provenance=True)
+    app.state.manager.pstn_adapter.set_runtime_config(
+        LiveCarrierConfig(
+            provider=CarrierProvider.VOBIZ,
+            auth_id="MA_TEST_VOBIZ",
+            auth_token="tok_test_vobiz",
+            from_number="+918065354620",
+            public_base_url="https://ringscout-hom7ntreuq-uc.a.run.app",
+        )
+    )
+    client = TestClient(app)
+
+    try:
+        update_runtime_payment_config(free_daily_calls_per_client=10)
+
+        # 1. Automated scanner calling POST /a2a without payment gets HTTP 402 and dials ZERO phones!
+        bot_a2a = client.post(
+            "/a2a",
+            headers={"User-Agent": "AgentValCon/1.2"},
+            json={
+                "jsonrpc": "2.0",
+                "id": "b1",
+                "method": "message/send",
+                "params": {
+                    "message": {
+                        "messageId": "m_b1",
+                        "role": "user",
+                        "parts": [{"kind": "text", "text": "Call Bastian Bandra for table tonight"}],
+                    }
+                },
+            },
+        )
+        assert bot_a2a.status_code == 402
+        assert len(dialed_phones) == 0
+
+        # 2. Real outsider agent calling POST /a2a with default execution_mode='auto' dials REAL Vobiz PSTN (capped at 2 shops)!
+        real_a2a = client.post(
+            "/a2a",
+            headers={"User-Agent": "python-httpx/0.28.1", "X-Forwarded-For": "203.0.113.55"},
+            json={
+                "jsonrpc": "2.0",
+                "id": "r1",
+                "method": "message/send",
+                "params": {
+                    "message": {
+                        "messageId": "m_r1",
+                        "role": "user",
+                        "parts": [
+                            {
+                                "kind": "data",
+                                "data": {
+                                    "place_category": "restaurant",
+                                    "city": "Mumbai",
+                                    "locality": "Bandra West",
+                                    "item_question": "Table for 4 tonight at 8:30 PM",
+                                    "max_shops": 4,
+                                },
+                            }
+                        ],
+                    }
+                },
+            },
+        )
+        assert real_a2a.status_code == 200
+        scout_data = real_a2a.json()["result"]["task"]["artifacts"][0]["parts"][0]["data"]
+        assert scout_data["execution_mode"] == "live_pstn"
+        assert scout_data["is_live_pstn"] is True
+        assert scout_data["simulated_sandbox"] is False
+        assert len(scout_data["ranked_quotes"]) == 2  # Free tier capped to 2 shops even though max_shops=4 requested
+        assert scout_data["ranked_quotes"][0]["carrier_provider"] == "vobiz"
+        assert scout_data["ranked_quotes"][0]["call_uuid"] == "vobiz_live_shop_1"
+        assert len(dialed_phones) == 2
+
+        # 3. Exceeding global daily free PSTN leg cap (2 used + 2 requested > 3 cap) cleanly returns HTTP 402!
+        cap_hit = client.post(
+            "/a2a",
+            headers={"User-Agent": "python-httpx/0.28.1", "X-Forwarded-For": "198.51.100.88"},
+            json={
+                "jsonrpc": "2.0",
+                "id": "r2",
+                "method": "message/send",
+                "params": {
+                    "message": {
+                        "messageId": "m_r2",
+                        "role": "user",
+                        "parts": [
+                            {
+                                "kind": "data",
+                                "data": {
+                                    "place_category": "restaurant",
+                                    "city": "Mumbai",
+                                    "locality": "Bandra West",
+                                    "item_question": "Table for 2 tonight",
+                                    "max_shops": 2,
+                                },
+                            }
+                        ],
+                    }
+                },
+            },
+        )
+        assert cap_hit.status_code == 402
+        assert "Global daily free live-PSTN safety cap" in cap_hit.json()["error"]["message"]
+    finally:
+        update_runtime_payment_config(gate_mode="off", free_daily_calls_per_client=5)
+
 
 
 

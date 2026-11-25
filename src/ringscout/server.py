@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field
 
 from ringscout.a2a_gateway import (
     BASE_SEPOLIA_CAIP2_NETWORK,
+    PaymentRequiredError,
     build_402_challenge,
     build_agent_card,
     build_agents_json_manifest,
@@ -1676,9 +1677,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
         provided_pass = request.headers.get("x-ringscout-passcode") or request.query_params.get(
             "passcode"
         )
-        pass_ok = bool(_expected_passcode()) and _check_passcode_value(provided_pass) or (
-            not _expected_passcode()
-        )
+        pass_ok = _check_admin_passcode_value(provided_pass)
         pay_sig = request.headers.get("payment-signature") or request.headers.get(
             "x-payment"
         )
@@ -1692,6 +1691,8 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
             owner_passcode_valid=pass_ok,
             stripe_token_header=request.headers.get("x-stripe-payment-token"),
             client_fingerprint=_client_fingerprint(request),
+            user_agent=request.headers.get("user-agent"),
+            execution_mode=req.execution_mode,
         )
         if settlement is None:
             hdrs, body = build_402_challenge(resource_url, detail=reason)
@@ -1711,6 +1712,9 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
                 content=result,
                 headers=build_payment_response_headers(settlement),
             )
+        except PaymentRequiredError as pay_exc:
+            hdrs, body = build_402_challenge(resource_url, detail=str(pay_exc))
+            return JSONResponse(status_code=402, content=body, headers=hdrs)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -1740,9 +1744,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
         provided_pass = request.headers.get("x-ringscout-passcode") or request.query_params.get(
             "passcode"
         )
-        pass_ok = bool(_expected_passcode()) and _check_passcode_value(provided_pass) or (
-            not _expected_passcode()
-        )
+        pass_ok = _check_admin_passcode_value(provided_pass)
         pay_sig = request.headers.get("payment-signature") or request.headers.get(
             "x-payment"
         )
@@ -1758,6 +1760,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
             owner_passcode_valid=pass_ok,
             stripe_token_header=request.headers.get("x-stripe-payment-token"),
             client_fingerprint=_client_fingerprint(request),
+            user_agent=request.headers.get("user-agent"),
         )
         return JSONResponse(status_code=status_code, content=resp_body, headers=resp_hdrs)
 
@@ -1844,9 +1847,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
         provided_pass = request.headers.get("x-ringscout-passcode") or request.query_params.get(
             "passcode"
         )
-        pass_ok = bool(_expected_passcode()) and _check_passcode_value(provided_pass) or (
-            not _expected_passcode()
-        )
+        pass_ok = _check_admin_passcode_value(provided_pass)
         pay_sig = request.headers.get("payment-signature") or request.headers.get(
             "x-payment"
         )
@@ -1868,6 +1869,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
             owner_passcode_valid=pass_ok,
             stripe_token_header=request.headers.get("x-stripe-payment-token"),
             client_fingerprint=_client_fingerprint(request),
+            user_agent=request.headers.get("user-agent"),
             out_headers=mcp_headers,
             incoming_session_id=incoming_sid,
         )
