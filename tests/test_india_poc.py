@@ -2582,10 +2582,27 @@ def test_github_seo_star_gate_and_custom_gpt_privacy_openapi_schema(
         update_runtime_payment_config(gate_mode="off", star_gate_mode="off", free_daily_calls_per_client=5)
 
 
+def test_inline_demo_player_never_forces_download() -> None:
+    app = create_app()
+    client = TestClient(app)
 
+    for method in (client.get, client.head):
+        watch = method("/demo")
+        assert watch.status_code == 200
+        assert "text/html" in watch.headers["content-type"]
 
+        mp4 = method("/demo.mp4")
+        assert mp4.status_code == 200
+        assert mp4.headers["content-type"] == "video/mp4"
+        assert "attachment" not in mp4.headers.get("content-disposition", "").lower()
 
+        poster = method("/demo_poster.jpg")
+        assert poster.status_code == 200
+        assert poster.headers["content-type"] == "image/jpeg"
+        assert "attachment" not in poster.headers.get("content-disposition", "").lower()
 
-
-
+    watch_html = client.get("/demo").text
+    assert 'property="og:video"' in watch_html
+    assert 'property="og:image"' in watch_html
+    assert "<video controls autoplay playsinline" in watch_html
 

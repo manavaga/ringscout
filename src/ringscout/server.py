@@ -2250,7 +2250,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
             headers={"Cache-Control": "public, max-age=86400"},
         )
 
-    @app.get("/demo", include_in_schema=False)
+    @app.api_route("/demo", methods=["GET", "HEAD"], include_in_schema=False)
     async def inline_demo_watch_page(request: Request) -> HTMLResponse:
         """Instant inline 1080p video watch page with OpenGraph `og:video` preview tags for Google Chat, WhatsApp & Slack."""
         base_url = _derive_public_base_url(request, manager.pstn_adapter).rstrip("/")
