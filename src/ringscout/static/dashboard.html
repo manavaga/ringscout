@@ -317,6 +317,11 @@
       <div class="refresh-meta" id="refreshLabel">Syncing live telemetry…</div>
     </div>
 
+    <div id="funnelClarifier" style="background:linear-gradient(90deg,rgba(16,185,129,0.1),rgba(56,189,248,0.08));border:1px solid rgba(16,185,129,0.28);border-radius:12px;padding:12px 16px;margin-bottom:18px;font-size:0.84rem;line-height:1.5;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;">
+      <span id="funnelClarifierText">Separating passive AI directory crawlers from active Agent invocations &amp; real +91 Vobiz phone calls…</span>
+      <a href="/tracker" style="font-family:var(--mono);font-size:0.75rem;color:var(--accent);text-decoration:none;border:1px solid rgba(16,185,129,0.35);padding:5px 10px;border-radius:8px;white-space:nowrap;">Open 4-Stage Traffic &amp; Call Funnel →</a>
+    </div>
+
     <section class="kpi-grid">
       <div class="kpi-card">
         <div class="kpi-label">Total Calls Dispatched</div>
@@ -404,9 +409,10 @@
       if (!quests.length) {
         const empty = document.createElement('div');
         empty.className = 'quest-item';
+        empty.id = 'emptyQuestsPlaceholder';
         empty.style.color = 'var(--ink-subtle)';
         empty.style.fontSize = '0.84rem';
-        empty.textContent = 'No calls recorded in this filter yet — trigger a search from the Call App or via MCP / A2A.';
+        empty.innerHTML = 'No active calls in this container revision right now — loading persistent 7-day Vobiz +91 call history below…';
         feedEl.appendChild(empty);
       } else {
         quests.forEach((q) => {
@@ -511,10 +517,50 @@
       try {
         const hdrs = {};
         if (passcode) hdrs['X-RingScout-Passcode'] = passcode;
-        const res = await fetch('/api/dashboard/summary', { headers: hdrs });
+        const [res, trkRes] = await Promise.all([
+          fetch('/api/dashboard/summary', { headers: hdrs }),
+          fetch('/api/tracker/endpoints', { headers: hdrs })
+        ]);
         if (res.ok) {
           lastSummary = await res.json();
-          renderFeed(lastSummary);
+          if (trkRes.ok) {
+            const trk = await trkRes.json();
+            const f = trk.funnel || {};
+            // Merge persistent 7-day Vobiz +91 call counts when in-memory revision starts fresh
+            if ((lastSummary.kpis.total_calls_dialed || 0) === 0 && (f.real_pstn_calls_dialed || 0) > 0) {
+              lastSummary.kpis.total_calls_dialed = f.real_pstn_calls_dialed;
+              lastSummary.kpis.pstn_calls_dialed = f.real_pstn_calls_dialed;
+              lastSummary.kpis.connected_calls = f.real_pstn_calls_answered || 0;
+            }
+            document.getElementById('funnelClarifierText').innerHTML =
+              `<strong>Traffic Breakdown:</strong> <strong>${(f.crawler_and_directory_scans || 0).toLocaleString()}</strong> passive crawler/registry scans (${f.crawler_share_pct || 0}%, ₹0 cost) · ` +
+              `<strong>${f.active_agent_invocations || 0}</strong> external Agent task probes · ` +
+              `<strong>${f.real_pstn_calls_dialed || 0}</strong> real +91 Vobiz calls in last 7d (<strong>${f.real_pstn_calls_answered || 0} answered live</strong>).`;
+            renderFeed(lastSummary);
+            const placeholder = document.getElementById('emptyQuestsPlaceholder');
+            if (placeholder && (trk.historical_pstn_sessions || []).length && currentFilter !== 'agentic') {
+              const feedEl = document.getElementById('questsFeed');
+              feedEl.innerHTML = (trk.historical_pstn_sessions || []).map((hq) => `
+                <div class="quest-item">
+                  <div class="quest-top">
+                    <span class="origin-badge origin-web">WEB CONSUMER · LIVE +91 VOBIZ (PERSISTED)</span>
+                    <span class="refresh-meta">${hq.created_at}</span>
+                  </div>
+                  <div class="quest-goal">Parallel +91 Voice Quest (${hq.quest_id_masked}) — ${hq.shops_answered} of ${hq.shops_dialed} Places Answered Live (${hq.total_talk_sec}s spoken)</div>
+                  ${(hq.legs || []).map((lg) => `
+                    <div class="leg-row">
+                      <div class="leg-head">
+                        <span>${lg.shop_id} (${hq.provider.toUpperCase()} +91)</span>
+                        <span class="leg-price">${lg.answered ? 'ANSWERED · ' + lg.duration_sec + 's' : 'NO ANSWER'}</span>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              `).join('');
+            }
+          } else {
+            renderFeed(lastSummary);
+          }
           document.getElementById('refreshLabel').textContent =
             `Live · Auto-refreshes every 4s · Updated ${new Date().toLocaleTimeString()}`;
         }

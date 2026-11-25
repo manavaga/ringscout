@@ -1838,7 +1838,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
             rpc_body = await request.json()
         except Exception as exc:
             raise HTTPException(status_code=400, detail="Invalid JSON-RPC payload") from exc
-        endpoint_tracker.record_mcp_rpc(rpc_body)
+        endpoint_tracker.record_mcp_rpc(rpc_body, user_agent=request.headers.get("user-agent") or "")
 
         base_url = _derive_public_base_url(request, manager.pstn_adapter)
         provided_pass = request.headers.get("x-ringscout-passcode") or request.query_params.get(
@@ -2096,10 +2096,59 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
         return FileResponse(STATIC_DIR / "index.html")
 
     @app.get("/api/tracker/endpoints")
-    async def get_endpoint_request_tracker(window_hours: int = 168) -> dict[str, Any]:
-        """Return persistent Cloud-Logging-merged + real-time endpoint hit counts, callers, and RPC stats."""
+    async def get_endpoint_request_tracker(
+        request: Request, window_hours: int = 168
+    ) -> dict[str, Any]:
+        """Return persistent Cloud-Logging-merged + real-time funnel, PSTN calls, callers, and endpoint stats."""
         safe_hours = max(1, min(int(window_hours), 720))
-        return await endpoint_tracker.build_report(window_hours=safe_hours)
+        provided_pass = request.headers.get("x-ringscout-passcode") or request.query_params.get("passcode")
+        is_admin = _check_admin_passcode_value(provided_pass)
+
+        live_feed: list[dict[str, Any]] = []
+        for q in reversed(list(manager.quests.values())[-25:]):
+            if not is_admin and (q.quest_id.startswith("q_test_") or q.origin_channel == "admin_self_test"):
+                continue
+            call_rows = []
+            for c in q.ranked_quotes():
+                signed_audio = None
+                if c.audio_url:
+                    sig = LiveIndiaPstnAdapter.sign_pstn_token("audio", q.quest_id, c.shop.shop_id)
+                    signed_audio = f"{c.audio_url}?sig={sig}"
+                call_rows.append(
+                    {
+                        "shop_id": c.shop.shop_id,
+                        "name": c.shop.name,
+                        "phone_display": c.shop.phone_display if is_admin else _mask_phone_for_public_dashboard(c.shop.phone_display),
+                        "status": c.status.value,
+                        "outcome": c.outcome.value,
+                        "duration_sec": round(c.duration_sec, 1),
+                        "quote": c.quote.model_dump() if c.quote else None,
+                        "audio_url": signed_audio,
+                        "transcript": [t.model_dump() for t in c.transcript],
+                    }
+                )
+            created_iso = datetime.datetime.fromtimestamp(
+                q.created_at_epoch, tz=datetime.timezone.utc
+            ).strftime("%Y-%m-%dT%H:%M:%SZ")
+            live_feed.append(
+                {
+                    "raw_quest_id": q.quest_id,
+                    "quest_id": q.quest_id if is_admin else f"q_••••{q.quest_id[-4:]}",
+                    "created_at": created_iso,
+                    "status": q.status,
+                    "mode": q.mode.value,
+                    "origin_channel": q.origin_channel or "web_consumer",
+                    "caller_agent": q.caller_agent,
+                    "city": q.city,
+                    "locality": q.locality,
+                    "user_goal": q.user_goal,
+                    "calls": call_rows,
+                }
+            )
+        report = await endpoint_tracker.build_report(window_hours=safe_hours, live_quests=live_feed)
+        for q_obj in report.get("live_quests", []):
+            q_obj.pop("raw_quest_id", None)
+        return report
 
     @app.get("/dashboard", include_in_schema=False)
     async def live_calls_dashboard_page() -> FileResponse:

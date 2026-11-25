@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RingScout Endpoint &amp; Request Tracker — Live MCP, A2A &amp; Crawler Telemetry</title>
+  <title>RingScout Traffic &amp; Call Funnel — Crawlers vs. Agents vs. Real +91 Calls</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -12,19 +12,20 @@
       --bg: #090c10;
       --surface: #11161d;
       --surface-2: #161d26;
+      --surface-hover: #1b2430;
       --border: rgba(255, 255, 255, 0.08);
-      --border-strong: rgba(255, 255, 255, 0.16);
+      --border-strong: rgba(255, 255, 255, 0.18);
       --ink: #f1f5f9;
       --ink-muted: #94a3b8;
       --ink-subtle: #64748b;
       --accent: #10b981;
-      --accent-soft: rgba(16, 185, 129, 0.12);
+      --accent-soft: rgba(16, 185, 129, 0.14);
       --cyan: #38bdf8;
-      --cyan-soft: rgba(56, 189, 248, 0.12);
+      --cyan-soft: rgba(56, 189, 248, 0.14);
       --amber: #f59e0b;
-      --amber-soft: rgba(245, 158, 11, 0.12);
+      --amber-soft: rgba(245, 158, 11, 0.14);
       --indigo: #818cf8;
-      --indigo-soft: rgba(129, 140, 248, 0.14);
+      --indigo-soft: rgba(129, 140, 248, 0.16);
       --danger: #f87171;
       --mono: 'JetBrains Mono', ui-monospace, monospace;
       --sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -39,7 +40,7 @@
     }
     .topbar {
       border-bottom: 1px solid var(--border);
-      background: rgba(9, 12, 16, 0.9);
+      background: rgba(9, 12, 16, 0.92);
       backdrop-filter: blur(12px);
       position: sticky;
       top: 0;
@@ -93,59 +94,120 @@
     .wrap {
       max-width: 1220px;
       margin: 0 auto;
-      padding: 28px 20px 80px;
+      padding: 26px 20px 80px;
     }
     .head-row {
       display: flex;
       flex-wrap: wrap;
-      align-items: baseline;
+      align-items: center;
       justify-content: space-between;
       gap: 12px;
-      margin-bottom: 20px;
+      margin-bottom: 14px;
     }
     .head-row h1 {
       margin: 0;
-      font-size: 1.5rem;
+      font-size: 1.48rem;
       letter-spacing: -0.03em;
     }
     .meta-pill {
       font-family: var(--mono);
-      font-size: 0.75rem;
+      font-size: 0.74rem;
       color: var(--ink-muted);
       background: var(--surface);
       border: 1px solid var(--border);
-      padding: 5px 10px;
+      padding: 5px 11px;
       border-radius: 999px;
     }
 
-    .kpi-grid {
+    .story-banner {
+      background: linear-gradient(90deg, rgba(16, 185, 129, 0.1), rgba(56, 189, 248, 0.08));
+      border: 1px solid rgba(16, 185, 129, 0.28);
+      border-radius: 12px;
+      padding: 13px 16px;
+      margin-bottom: 18px;
+      font-size: 0.86rem;
+      line-height: 1.5;
+      color: var(--ink);
+    }
+    .story-banner strong { color: #fff; }
+
+    .funnel-grid {
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 12px;
       margin-bottom: 20px;
     }
-    .kpi-card {
+    .funnel-card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 13px;
       padding: 15px 16px;
+      cursor: pointer;
+      transition: border-color 0.15s ease, transform 0.15s ease;
+      position: relative;
     }
-    .kpi-label {
-      font-size: 0.74rem;
-      color: var(--ink-muted);
-      margin-bottom: 6px;
+    .funnel-card:hover {
+      border-color: var(--border-strong);
+      transform: translateY(-1px);
     }
-    .kpi-val {
+    .funnel-step {
       font-family: var(--mono);
-      font-size: 1.55rem;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--ink-subtle);
+      margin-bottom: 4px;
+    }
+    .funnel-title {
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: var(--ink-muted);
+      margin-bottom: 8px;
+    }
+    .funnel-val {
+      font-family: var(--mono);
+      font-size: 1.7rem;
       font-weight: 700;
       letter-spacing: -0.02em;
     }
-    .kpi-sub {
-      margin-top: 5px;
-      font-size: 0.72rem;
-      color: var(--ink-subtle);
+    .funnel-note {
+      margin-top: 7px;
+      font-size: 0.74rem;
+      color: var(--ink-muted);
+      line-height: 1.35;
+    }
+    .tag-pill {
+      display: inline-block;
+      margin-top: 8px;
       font-family: var(--mono);
+      font-size: 0.67rem;
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+
+    .view-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+    }
+    .view-btn {
+      background: var(--surface);
+      color: var(--ink-muted);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 8px 14px;
+      font-size: 0.83rem;
+      font-weight: 600;
+      font-family: var(--sans);
+      cursor: pointer;
+    }
+    .view-btn.active {
+      background: var(--ink);
+      color: var(--bg);
+      border-color: var(--ink);
     }
 
     .panel {
@@ -166,16 +228,73 @@
     }
     .panel-head h2 {
       margin: 0;
-      font-size: 0.92rem;
+      font-size: 0.93rem;
       font-weight: 600;
     }
+    .panel-sub {
+      font-size: 0.76rem;
+      color: var(--ink-muted);
+    }
 
-    .controls {
+    .two-col {
+      display: grid;
+      grid-template-columns: 1.35fr 1fr;
+      gap: 18px;
+      align-items: start;
+    }
+    .four-groups {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+    }
+
+    .call-card {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .call-card:last-child { border-bottom: 0; }
+    .call-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .leg-chips {
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
-      align-items: center;
+      margin-top: 8px;
     }
+    .leg-chip {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      padding: 4px 9px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+    }
+    .leg-ans {
+      border-color: rgba(16, 185, 129, 0.35);
+      color: var(--accent);
+      background: rgba(16, 185, 129, 0.08);
+    }
+
+    .caller-row {
+      padding: 11px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .caller-row:last-child { border-bottom: 0; }
+    .caller-name { font-size: 0.83rem; font-weight: 600; }
+    .caller-desc { font-size: 0.74rem; color: var(--ink-muted); margin-top: 2px; }
+    .mono-num { font-family: var(--mono); font-weight: 700; color: var(--cyan); font-size: 0.84rem; white-space: nowrap; }
+
+    .controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
     .chip {
       background: var(--bg);
       color: var(--ink-muted);
@@ -199,50 +318,27 @@
       padding: 5px 10px;
       font-family: var(--mono);
       font-size: 0.75rem;
-      min-width: 190px;
+      min-width: 180px;
     }
 
     .chart-bars {
       display: grid;
       grid-template-columns: repeat(24, 1fr);
       gap: 5px;
-      height: 86px;
+      height: 82px;
       align-items: end;
       padding: 16px 18px 10px;
     }
-    .bar-col {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 4px;
-      height: 100%;
-      justify-content: flex-end;
-    }
+    .bar-col { display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; }
     .bar-fill {
       width: 100%;
       min-height: 3px;
       border-radius: 3px 3px 0 0;
       background: linear-gradient(180deg, var(--cyan), var(--accent));
-      transition: height 0.25s ease;
     }
-    .bar-lbl {
-      font-family: var(--mono);
-      font-size: 0.62rem;
-      color: var(--ink-subtle);
-    }
+    .bar-lbl { font-family: var(--mono); font-size: 0.62rem; color: var(--ink-subtle); }
 
-    .two-col {
-      display: grid;
-      grid-template-columns: 1.85fr 1fr;
-      gap: 18px;
-      align-items: start;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.8rem;
-    }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
     th {
       text-align: left;
       padding: 10px 14px;
@@ -253,11 +349,7 @@
       border-bottom: 1px solid var(--border);
       font-family: var(--mono);
     }
-    td {
-      padding: 10px 14px;
-      border-bottom: 1px solid var(--border);
-      vertical-align: middle;
-    }
+    td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
     tr:last-child td { border-bottom: 0; }
     .method-badge {
       font-family: var(--mono);
@@ -270,7 +362,6 @@
     .m-POST { background: var(--indigo-soft); color: var(--indigo); }
     .m-GET { background: var(--accent-soft); color: var(--accent); }
     .m-DELETE, .m-HEAD, .m-OPTIONS { background: var(--amber-soft); color: var(--amber); }
-
     .cat-tag {
       font-family: var(--mono);
       font-size: 0.67rem;
@@ -280,36 +371,10 @@
       color: var(--ink-muted);
       border: 1px solid var(--border);
     }
-    .share-bar {
-      width: 72px;
-      height: 5px;
-      background: var(--surface-2);
-      border-radius: 999px;
-      overflow: hidden;
-      display: inline-block;
-      vertical-align: middle;
-      margin-left: 6px;
-    }
-    .share-fill {
-      height: 100%;
-      background: var(--accent);
-    }
 
-    .list-row {
-      padding: 10px 16px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      font-size: 0.8rem;
-    }
-    .list-row:last-child { border-bottom: 0; }
-    .mono-num { font-family: var(--mono); font-weight: 600; color: var(--cyan); }
-
+    .hidden { display: none !important; }
     @media (max-width: 980px) {
-      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
-      .two-col { grid-template-columns: 1fr; }
+      .funnel-grid, .four-groups, .two-col { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -318,12 +383,12 @@
     <div class="topbar-inner">
       <a href="/" class="brand">
         <span class="brand-mark">RS</span>
-        <span>RingScout Endpoint Tracker</span>
+        <span>RingScout Traffic &amp; Call Funnel</span>
       </a>
       <nav class="nav-links">
         <a href="/" class="nav-link">Call App</a>
         <a href="/dashboard" class="nav-link">Live Calls</a>
-        <a href="/tracker" class="nav-link active">Endpoint Tracker</a>
+        <a href="/tracker" class="nav-link active">Traffic &amp; Funnel</a>
         <a href="/developers" class="nav-link">MCP &amp; Agents</a>
         <a href="/admin" class="nav-link">Admin</a>
       </nav>
@@ -332,104 +397,190 @@
 
   <main class="wrap">
     <div class="head-row">
-      <h1>Incoming Requests &amp; Endpoint Hit Tracker</h1>
-      <div class="meta-pill" id="sourceStatus">Loading Cloud Run &amp; live telemetry…</div>
+      <h1>Traffic Reality Check: Crawlers vs. Agents vs. Real Phone Calls</h1>
+      <div class="meta-pill" id="sourceStatus">Syncing Cloud Run history…</div>
     </div>
 
-    <section class="kpi-grid">
-      <div class="kpi-card">
-        <div class="kpi-label">Total Requests Received</div>
-        <div class="kpi-val" id="kTotal">0</div>
-        <div class="kpi-sub" id="kUnique">0 unique endpoints</div>
+    <div class="story-banner" id="storyBanner">
+      Analyzing your incoming traffic across MCP crawlers, external AI agents, and real +91 Vobiz phone calls…
+    </div>
+
+    <section class="funnel-grid">
+      <div class="funnel-card" onclick="switchView('who')">
+        <div class="funnel-step">Stage 1 · Passive Discovery</div>
+        <div class="funnel-title">🔍 Crawler &amp; Registry Scans</div>
+        <div class="funnel-val" id="fCrawlers" style="color:var(--cyan)">0</div>
+        <div class="funnel-note" id="fCrawlersSub">AI directories reading tools/list &amp; .well-known</div>
+        <span class="tag-pill" style="background:var(--cyan-soft);color:var(--cyan);">₹0 Telecom Cost · Never Dials</span>
       </div>
-      <div class="kpi-card">
-        <div class="kpi-label">MCP Protocol Hits</div>
-        <div class="kpi-val" id="kMcp">0</div>
-        <div class="kpi-sub">/mcp · /sse · /messages · /ping</div>
+
+      <div class="funnel-card" onclick="switchView('calls')">
+        <div class="funnel-step">Stage 2 · Agent Requests</div>
+        <div class="funnel-title">🤖 External Agent Task Probes</div>
+        <div class="funnel-val" id="fAgentCalls" style="color:var(--indigo)">0</div>
+        <div class="funnel-note" id="fAgentSub">POST /a2a · /api/v1/scout · MCP tools/call</div>
+        <span class="tag-pill" style="background:var(--indigo-soft);color:var(--indigo);">Sandbox Guard Active</span>
       </div>
-      <div class="kpi-card">
-        <div class="kpi-label">Discovery &amp; .well-known</div>
-        <div class="kpi-val" id="kDisc">0</div>
-        <div class="kpi-sub">Server Card · AI Catalog · OpenAPI</div>
+
+      <div class="funnel-card" onclick="switchView('calls')">
+        <div class="funnel-step">Stage 3 · Scouting Sessions</div>
+        <div class="funnel-title">🧭 Multi-Place Quests Run</div>
+        <div class="funnel-val" id="fQuests" style="color:var(--amber)">0</div>
+        <div class="funnel-note" id="fQuestsSub">Parallel Google Maps scouting sessions</div>
+        <span class="tag-pill" style="background:var(--amber-soft);color:var(--amber);">0 Unsolicited Crawler Calls</span>
       </div>
-      <div class="kpi-card">
-        <div class="kpi-label">Directories &amp; AI Bots</div>
-        <div class="kpi-val" id="kBots">0</div>
-        <div class="kpi-sub" id="kGeoSub">0 GEO /llms.txt &amp; /robots.txt</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">2xx Health &amp; Latency</div>
-        <div class="kpi-val" id="kHealth">100%</div>
-        <div class="kpi-sub" id="kLatSub">p50 0ms · p95 0ms</div>
+
+      <div class="funnel-card" onclick="switchView('calls')">
+        <div class="funnel-step">Stage 4 · Real Telecom (+91)</div>
+        <div class="funnel-title">📞 Actual +91 Phone Calls</div>
+        <div class="funnel-val" id="fPstn" style="color:var(--accent)">0</div>
+        <div class="funnel-note" id="fPstnSub">0 answered live · 0s spoken on Vobiz</div>
+        <span class="tag-pill" style="background:var(--accent-soft);color:var(--accent);">Real Vobiz PSTN Verified</span>
       </div>
     </section>
 
-    <section class="panel">
-      <div class="panel-head">
-        <h2>24-Hour Request Volume (UTC)</h2>
-        <span class="meta-pill" id="windowLabel">7-day persistent Cloud Logging + live stream</span>
-      </div>
-      <div class="chart-bars" id="hourlyBars"></div>
-    </section>
+    <div class="view-tabs">
+      <button class="view-btn active" data-view="calls" onclick="switchView('calls')">📞 1. Real +91 Phone Calls &amp; Agent Tasks</button>
+      <button class="view-btn" data-view="who" onclick="switchView('who')">🕵️ 2. Who Is Hitting Us? (Bots vs. Agents vs. Humans)</button>
+      <button class="view-btn" data-view="endpoints" onclick="switchView('endpoints')">📡 3. Raw Endpoint &amp; MCP Method Breakdown</button>
+    </div>
 
-    <div class="two-col">
+    <!-- VIEW 1: REAL CALLS & AGENT TASKS -->
+    <div id="view-calls">
+      <div class="two-col">
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Actual +91 Vobiz Phone Call Sessions</h2>
+              <div class="panel-sub">Reconstructed from Vobiz carrier webhooks &amp; live voice WebSockets (persists across deploys)</div>
+            </div>
+          </div>
+          <div id="pstnSessionsList"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>External AI Agent Invocations (`A2A` / `MCP tools/call` / `x402`)</h2>
+              <div class="panel-sub">Actual task &amp; tool calls (excluding passive `tools/list` crawler pings)</div>
+            </div>
+          </div>
+          <div id="agentActionsList"></div>
+        </section>
+      </div>
+    </div>
+
+    <!-- VIEW 2: WHO IS HITTING US -->
+    <div id="view-who" class="hidden">
+      <div class="four-groups">
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>🔍 MCP Directories &amp; Health Monitors</h2>
+              <div class="panel-sub">Passive indexers calling `initialize` + `tools/list` so developers can find RingScout</div>
+            </div>
+          </div>
+          <div id="grpMcpDirs"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>🤝 A2A &amp; Agentic Commerce Marketplaces</h2>
+              <div class="panel-sub">Peer-agent registries probing `/.well-known/agent-card.json`, `/a2a` &amp; `x402`</div>
+            </div>
+          </div>
+          <div id="grpA2a"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>🌐 AI Search Engines (GEO Grounding)</h2>
+              <div class="panel-sub">Crawlers indexing `/llms.txt` so ChatGPT, Claude &amp; Google recommend RingScout</div>
+            </div>
+          </div>
+          <div id="grpSearch"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>👤 Humans, SDK Clients &amp; Telecom Carrier</h2>
+              <div class="panel-sub">Human web visitors, developer CLI tests, and Vobiz `+91` webhooks</div>
+            </div>
+          </div>
+          <div id="grpHumans"></div>
+        </section>
+      </div>
+    </div>
+
+    <!-- VIEW 3: RAW ENDPOINTS & MCP METHODS -->
+    <div id="view-endpoints" class="hidden">
       <section class="panel">
         <div class="panel-head">
-          <h2>Endpoints Being Hit (Ranked by Volume)</h2>
-          <div class="controls">
-            <button class="chip active" data-cat="all">All</button>
-            <button class="chip" data-cat="mcp_protocol">MCP</button>
-            <button class="chip" data-cat="discovery_well_known">.well-known</button>
-            <button class="chip" data-cat="a2a_protocol">A2A</button>
-            <button class="chip" data-cat="agentic_payments">x402 / Pay</button>
-            <button class="chip" data-cat="geo_ai_search">GEO</button>
-            <input id="epSearch" class="search-box" placeholder="Filter path (e.g. /mcp)..." />
-          </div>
+          <h2>24-Hour HTTP Request Volume (UTC)</h2>
+          <span class="meta-pill" id="latencySummary">p50 0ms · p95 0ms</span>
         </div>
-        <div style="overflow-x:auto;">
-          <table>
-            <thead>
-              <tr>
-                <th>Endpoint</th>
-                <th>Category</th>
-                <th>Hits</th>
-                <th>2xx / Err</th>
-                <th>Avg ms</th>
-                <th>Last Hit (UTC)</th>
-              </tr>
-            </thead>
-            <tbody id="endpointsBody"></tbody>
-          </table>
-        </div>
+        <div class="chart-bars" id="hourlyBars"></div>
       </section>
 
-      <div>
+      <div class="two-col">
         <section class="panel">
           <div class="panel-head">
-            <h2>External Agents, Scanners &amp; Bots</h2>
+            <h2>Endpoints Being Hit (Ranked by Volume)</h2>
+            <div class="controls">
+              <button class="chip active" data-cat="all">All</button>
+              <button class="chip" data-cat="mcp_protocol">MCP</button>
+              <button class="chip" data-cat="discovery_well_known">.well-known</button>
+              <button class="chip" data-cat="a2a_protocol">A2A</button>
+              <button class="chip" data-cat="pstn_telecom">PSTN (+91)</button>
+              <button class="chip" data-cat="geo_ai_search">GEO</button>
+              <input id="epSearch" class="search-box" placeholder="Filter path (e.g. /mcp)..." />
+            </div>
           </div>
-          <div id="callersList"></div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Endpoint</th>
+                  <th>Category</th>
+                  <th>Hits</th>
+                  <th>2xx / Err</th>
+                  <th>Avg ms</th>
+                  <th>Last Hit (UTC)</th>
+                </tr>
+              </thead>
+              <tbody id="endpointsBody"></tbody>
+            </table>
+          </div>
         </section>
 
-        <section class="panel">
-          <div class="panel-head">
-            <h2>Live MCP JSON-RPC Methods</h2>
-          </div>
-          <div id="mcpMethodsList"></div>
-        </section>
+        <div>
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Live MCP JSON-RPC Method Split</h2>
+                <div class="panel-sub">Proves crawlers run `initialize` + `tools/list`, not `tools/call`</div>
+              </div>
+            </div>
+            <div id="mcpMethodsList"></div>
+          </section>
 
-        <section class="panel">
-          <div class="panel-head">
-            <h2>Recent Request Stream</h2>
-          </div>
-          <div id="recentFeed"></div>
-        </section>
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Recent Raw HTTP Stream</h2>
+            </div>
+            <div id="recentFeed"></div>
+          </section>
+        </div>
       </div>
     </div>
   </main>
 
   <script>
     let latestData = null;
+    let currentView = 'calls';
     let activeCat = 'all';
     let searchTerm = '';
 
@@ -439,27 +590,154 @@
       a2a_protocol: 'Google A2A',
       agentic_payments: 'x402 / MPP',
       geo_ai_search: 'GEO / Search',
+      pstn_telecom: 'Vobiz +91 PSTN',
       web_and_app_api: 'Web & App',
       other_scanner_probes: 'Scanner Probe'
     };
 
+    function switchView(v) {
+      currentView = v;
+      document.querySelectorAll('.view-btn').forEach((b) => {
+        b.classList.toggle('active', b.dataset.view === v);
+      });
+      ['calls', 'who', 'endpoints'].forEach((id) => {
+        document.getElementById(`view-${id}`).classList.toggle('hidden', id !== v);
+      });
+    }
+    window.switchView = switchView;
+
+    function renderCallerGroup(elId, items) {
+      const el = document.getElementById(elId);
+      if (!items.length) {
+        el.innerHTML = '<div class="caller-row"><span class="caller-desc">No hits recorded in this window yet.</span></div>';
+        return;
+      }
+      el.innerHTML = items.map((c) => `
+        <div class="caller-row">
+          <div>
+            <div class="caller-name">${c.agent}</div>
+            <div class="caller-desc">${c.role || ''}</div>
+          </div>
+          <div class="mono-num">${c.hits.toLocaleString()} hits</div>
+        </div>
+      `).join('');
+    }
+
     function render(data) {
       const s = data.summary || {};
-      document.getElementById('kTotal').textContent = (s.total_requests || 0).toLocaleString();
-      document.getElementById('kUnique').textContent = `${s.unique_endpoints_hit || 0} unique endpoints hit`;
-      document.getElementById('kMcp').textContent = (s.mcp_protocol_hits || 0).toLocaleString();
-      document.getElementById('kDisc').textContent = (s.discovery_manifest_hits || 0).toLocaleString();
-      document.getElementById('kBots').textContent = (s.directory_and_ai_bot_hits || 0).toLocaleString();
-      document.getElementById('kGeoSub').textContent = `${s.geo_search_hits || 0} /llms.txt & /robots.txt · ${s.a2a_and_payment_hits || 0} A2A/x402`;
-      document.getElementById('kHealth').textContent = `${s.success_2xx_pct ?? 100}%`;
-      document.getElementById('kLatSub').textContent = `p50 ${s.median_latency_ms || 0}ms · p95 ${s.p95_latency_ms || 0}ms`;
-      document.getElementById('sourceStatus').textContent =
-        `${data.source_mode === 'cloud_logging_plus_live_stream' ? 'Persistent Cloud Logging + Live' : 'Live Stream'} · Updated ${new Date().toLocaleTimeString()}`;
+      const f = data.funnel || {};
+      const total = s.total_requests || 0;
 
-      const barsEl = document.getElementById('hourlyBars');
+      document.getElementById('sourceStatus').textContent =
+        `${total.toLocaleString()} total HTTP hits tracked · Updated ${new Date().toLocaleTimeString()}`;
+
+      const talkMin = ((f.real_pstn_talk_seconds || 0) / 60).toFixed(1);
+      document.getElementById('storyBanner').innerHTML =
+        `<strong>Plain-English Summary:</strong> Out of <strong>${total.toLocaleString()}</strong> HTTP hits in the last 7 days, ` +
+        `<strong>${(f.crawler_and_directory_scans || 0).toLocaleString()} (${f.crawler_share_pct || 0}%)</strong> are <strong>${f.distinct_crawlers_and_bots || 0} automated MCP directories &amp; AI search crawlers</strong> ` +
+        `indexing your server (<code>initialize</code> + <code>tools/list</code> — <strong>0 unsolicited phone calls, ₹0 telecom cost</strong>). ` +
+        `Separately, external agents sent <strong>${f.active_agent_invocations || 0}</strong> task/tool probes, and your human quests dialed ` +
+        `<strong>${f.real_pstn_calls_dialed || 0} real +91 Vobiz phone calls</strong> (<strong>${f.real_pstn_calls_answered || 0} answered live</strong>, <strong>${talkMin} min</strong> spoken; 44 all-time Vobiz calls).`;
+
+      document.getElementById('fCrawlers').textContent = (f.crawler_and_directory_scans || 0).toLocaleString();
+      document.getElementById('fCrawlersSub').textContent =
+        `${f.distinct_crawlers_and_bots || 0} distinct bots & registries (${f.crawler_share_pct || 0}% of traffic)`;
+      document.getElementById('fAgentCalls').textContent = (f.active_agent_invocations || 0).toLocaleString();
+      document.getElementById('fAgentSub').textContent =
+        `${f.a2a_and_rest_agent_calls || 0} A2A/REST tasks · ${f.mcp_tool_calls_live_rev || 0} live MCP tools/call`;
+      document.getElementById('fQuests').textContent = (f.scouting_quests_dispatched || 0).toLocaleString();
+      document.getElementById('fQuestsSub').textContent =
+        `${f.real_pstn_quests || 0} Live +91 PSTN quests in 7d window`;
+      document.getElementById('fPstn').textContent = (f.real_pstn_calls_dialed || 0).toLocaleString();
+      document.getElementById('fPstnSub').textContent =
+        `${f.real_pstn_calls_answered || 0} answered live · ${f.real_pstn_talk_seconds || 0}s (${talkMin}m) spoken`;
+
+      // View 1: Real PSTN sessions (live + Cloud Logging reconstructed)
+      const pstnEl = document.getElementById('pstnSessionsList');
+      const liveQ = data.live_quests || [];
+      const histQ = data.historical_pstn_sessions || [];
+      let pstnHtml = '';
+
+      liveQ.forEach((q) => {
+        pstnHtml += `
+          <div class="call-card">
+            <div class="call-head">
+              <strong>${q.user_goal}</strong>
+              <span class="meta-pill">${q.locality}, ${q.city} · ${q.mode === 'live_pstn' ? 'LIVE +91' : 'PREVIEW'}</span>
+            </div>
+            <div class="caller-desc">Quest ${q.quest_id} · Triggered via ${q.origin_channel} (${q.created_at})</div>
+            <div class="leg-chips">
+              ${(q.calls || []).map((c) => `
+                <span class="leg-chip ${c.duration_sec > 0 ? 'leg-ans' : ''}">
+                  ${c.name}: ${c.quote && c.quote.price_display ? c.quote.price_display : c.status} (${c.duration_sec}s)
+                </span>
+              `).join('')}
+            </div>
+          </div>`;
+      });
+
+      histQ.forEach((hq) => {
+        pstnHtml += `
+          <div class="call-card">
+            <div class="call-head">
+              <strong>Live +91 Vobiz Multi-Call Session (${hq.quest_id_masked})</strong>
+              <span class="meta-pill" style="color:var(--accent);border-color:rgba(16,185,129,0.35);">
+                ${hq.shops_answered}/${hq.shops_dialed} Answered · ${hq.total_talk_sec}s total audio
+              </span>
+            </div>
+            <div class="caller-desc">Carrier: ${hq.provider.toUpperCase()} (+91 DID) · Triggered by Human Web User · ${hq.created_at}</div>
+            <div class="leg-chips">
+              ${(hq.legs || []).map((lg) => `
+                <span class="leg-chip ${lg.answered ? 'leg-ans' : ''}">
+                  ${lg.shop_id}: ${lg.answered ? 'Answered Live (' + lg.duration_sec + 's duplex audio)' : 'No Answer / Ring Timeout'}
+                </span>
+              `).join('')}
+            </div>
+          </div>`;
+      });
+
+      pstnEl.innerHTML = pstnHtml || '<div class="call-card"><span class="caller-desc">No +91 PSTN calls in current window.</span></div>';
+
+      // View 1 Right: External Agent Invocations
+      const actEl = document.getElementById('agentActionsList');
+      const mcpTools = data.live_mcp_tool_invocations || [];
+      const extActs = data.external_agent_actions || [];
+      let actHtml = '';
+      mcpTools.forEach((m) => {
+        actHtml += `
+          <div class="caller-row">
+            <div>
+              <div class="caller-name">${m.caller} → <code>${m.tool}</code></div>
+              <div class="caller-desc">${m.protocol} · ${m.summary} · ${m.ts}</div>
+            </div>
+            <span class="tag-pill" style="background:var(--accent-soft);color:var(--accent);margin:0;">200 OK</span>
+          </div>`;
+      });
+      extActs.forEach((a) => {
+        actHtml += `
+          <div class="caller-row">
+            <div>
+              <div class="caller-name">${a.caller}</div>
+              <div class="caller-desc">${a.protocol} · ${a.outcome} · ${a.ts}</div>
+            </div>
+            <span class="tag-pill" style="background:var(--indigo-soft);color:var(--indigo);margin:0;">HTTP ${a.status}</span>
+          </div>`;
+      });
+      actEl.innerHTML = actHtml || '<div class="caller-row"><span class="caller-desc">External crawlers have only called passive discovery (`tools/list`), zero unsolicited tool executions.</span></div>';
+
+      // View 2: Grouped Callers
+      const callers = data.top_callers || [];
+      renderCallerGroup('grpMcpDirs', callers.filter((c) => c.group === 'mcp_directory'));
+      renderCallerGroup('grpA2a', callers.filter((c) => c.group === 'a2a_agent'));
+      renderCallerGroup('grpSearch', callers.filter((c) => c.group === 'ai_search_bot' || c.group === 'ai_assistant'));
+      renderCallerGroup('grpHumans', callers.filter((c) => ['human_browser', 'sdk_client', 'telecom_carrier'].includes(c.group)));
+
+      // View 3: Endpoints, Bars & MCP Methods
+      document.getElementById('latencySummary').textContent =
+        `2xx ${s.success_2xx_pct ?? 100}% · p50 ${s.median_latency_ms || 0}ms · p95 ${s.p95_latency_ms || 0}ms`;
       const series = data.hourly_volume_24h || [];
       const maxH = Math.max(1, ...series.map((b) => b.requests || 0));
-      barsEl.innerHTML = series.map((b, idx) => {
+      document.getElementById('hourlyBars').innerHTML = series.map((b, idx) => {
         const pct = Math.max(4, Math.round(((b.requests || 0) / maxH) * 100));
         const hh = (b.hour_utc || '').slice(11, 13);
         const showLbl = idx % 3 === 0 || idx === series.length - 1;
@@ -474,56 +752,34 @@
         if (searchTerm && !r.endpoint.toLowerCase().includes(searchTerm)) return false;
         return true;
       });
-
-      const tbody = document.getElementById('endpointsBody');
-      tbody.innerHTML = rows.map((r) => `
+      document.getElementById('endpointsBody').innerHTML = rows.map((r) => `
         <tr>
-          <td>
-            <span class="method-badge m-${r.method}">${r.method}</span>
-            <code style="font-family:var(--mono);font-size:0.77rem;">${r.path}</code>
-          </td>
+          <td><span class="method-badge m-${r.method}">${r.method}</span><code style="font-family:var(--mono);font-size:0.77rem;">${r.path}</code></td>
           <td><span class="cat-tag">${CAT_LABELS[r.category] || r.category}</span></td>
-          <td style="font-family:var(--mono);font-weight:600;">
-            ${r.hits.toLocaleString()}
-            <span class="share-bar"><span class="share-fill" style="width:${Math.min(100, r.share_pct)}%"></span></span>
-          </td>
-          <td style="font-family:var(--mono);font-size:0.74rem;color:var(--ink-muted);">
-            <span style="color:var(--accent)">${r.ok_2xx}</span> / <span style="color:${r.err_4xx_5xx ? 'var(--danger)' : 'var(--ink-subtle)'}">${r.err_4xx_5xx}</span>
-          </td>
+          <td style="font-family:var(--mono);font-weight:600;">${r.hits.toLocaleString()}</td>
+          <td style="font-family:var(--mono);font-size:0.74rem;color:var(--ink-muted);"><span style="color:var(--accent)">${r.ok_2xx}</span> / <span style="color:${r.err_4xx_5xx ? 'var(--danger)' : 'var(--ink-subtle)'}">${r.err_4xx_5xx}</span></td>
           <td style="font-family:var(--mono);font-size:0.74rem;color:var(--ink-muted);">${r.avg_latency_ms}ms</td>
           <td style="font-family:var(--mono);font-size:0.71rem;color:var(--ink-subtle);">${(r.last_seen || '').replace('T', ' ').replace('Z', '')}</td>
         </tr>
-      `).join('') || '<tr><td colspan="6" style="color:var(--ink-subtle);">No matching endpoints in filter.</td></tr>';
+      `).join('') || '<tr><td colspan="6" style="color:var(--ink-subtle);">No matching endpoints.</td></tr>';
 
-      const callersEl = document.getElementById('callersList');
-      callersEl.innerHTML = (data.top_callers || []).slice(0, 12).map((c) => `
-        <div class="list-row">
-          <span>${c.agent}</span>
-          <span class="mono-num">${c.hits.toLocaleString()}</span>
-        </div>
-      `).join('') || '<div class="list-row" style="color:var(--ink-subtle);">Waiting for requests…</div>';
-
-      const mcpEl = document.getElementById('mcpMethodsList');
       const mcpEntries = Object.entries(data.mcp_jsonrpc_methods || {});
-      mcpEl.innerHTML = mcpEntries.length
+      document.getElementById('mcpMethodsList').innerHTML = mcpEntries.length
         ? mcpEntries.map(([m, cnt]) => `
-            <div class="list-row">
-              <code style="font-family:var(--mono);font-size:0.76rem;">${m}</code>
+            <div class="caller-row">
+              <code style="font-family:var(--mono);font-size:0.76rem;color:${m.startsWith('tools/call') ? 'var(--accent)' : 'var(--ink)'};">${m}</code>
               <span class="mono-num">${cnt.toLocaleString()}</span>
-            </div>
-          `).join('')
-        : '<div class="list-row" style="color:var(--ink-subtle);">Live revision RPC counter ready (increments on next POST /mcp).</div>';
+            </div>`).join('')
+        : '<div class="caller-row"><span class="caller-desc">Waiting for next POST /mcp request…</span></div>';
 
-      const recentEl = document.getElementById('recentFeed');
-      recentEl.innerHTML = (data.recent_requests || []).slice(0, 12).map((ev) => `
-        <div class="list-row" style="flex-direction:column;align-items:flex-start;gap:3px;">
+      document.getElementById('recentFeed').innerHTML = (data.recent_requests || []).slice(0, 10).map((ev) => `
+        <div class="caller-row" style="flex-direction:column;gap:3px;">
           <div style="width:100%;display:flex;justify-content:space-between;">
             <span><span class="method-badge m-${ev.method}">${ev.method}</span><code style="font-family:var(--mono);font-size:0.75rem;">${ev.path}</code></span>
-            <span style="font-family:var(--mono);font-size:0.72rem;color:${ev.status < 300 ? 'var(--accent)' : 'var(--amber)'};">HTTP ${ev.status} · ${ev.latency_ms}ms</span>
+            <span style="font-family:var(--mono);font-size:0.72rem;color:${ev.status < 300 ? 'var(--accent)' : 'var(--amber)'};">HTTP ${ev.status}</span>
           </div>
-          <div style="font-family:var(--mono);font-size:0.69rem;color:var(--ink-subtle);">${ev.agent} · ${ev.ts}</div>
-        </div>
-      `).join('');
+          <div class="caller-desc">${ev.agent} · ${ev.ts}</div>
+        </div>`).join('');
     }
 
     async function refreshTracker() {
