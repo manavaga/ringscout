@@ -100,7 +100,7 @@ Nothing in these Terms excludes a warranty or right that cannot legally be exclu
 
 To the maximum extent permitted by applicable law, the operator will not be liable for indirect, incidental, special, exemplary or consequential losses, loss of profits, loss of data, business interruption, or decisions made in reliance on information returned by a business or RingScout.
 
-To the maximum extent permitted by applicable law, the operator's aggregate liability arising from the service will be limited to the greater of (a) the amount you paid directly to the operator for RingScout in the three months before the event giving rise to the claim, or (b) INR 1,000.
+**Liability cap:** No numerical liability cap is set in this draft. The operator should determine an appropriate cap and exclusions after qualified legal review, taking applicable consumer and other mandatory laws into account.
 
 These limitations do not apply to liability that cannot be limited under applicable law, including liability arising from fraud or willful misconduct where such limitation is prohibited.
 
