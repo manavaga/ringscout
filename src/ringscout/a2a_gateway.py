@@ -734,14 +734,20 @@ def build_agent_card(base_url: str, live_pstn_ready: bool) -> dict[str, Any]:
                 "id": "scout_places_on_google_maps",
                 "name": "Call Google Maps Places for Live Availability, Rates & Insights",
                 "description": (
-                    "Finds open hotels, restaurants, clinics, MRI centers, petrol pumps, salons, auto garages, or pharmacies "
-                    "on Google Maps, calls them in parallel in natural en-IN / hi-IN voice with street-landmark confidence "
-                    "markers, and returns verified availability, ₹ rates, key answers, and 24kHz .wav audio proof."
+                    "Finds open hotels, restaurants, spas, salons, clinics, MRI centers, petrol pumps, auto garages, "
+                    "or pharmacies on Google Maps, calls them in parallel in natural en-IN / hi-IN voice with "
+                    "street-landmark confidence markers, and returns verified availability, ₹ rates, key answers, "
+                    "and 24kHz .wav audio proof. Free unauthenticated calls run in instant sandbox preview; attach "
+                    "Stripe MPP (`Authorization: Payment <spt>`), x402 Base USDC (`PAYMENT-SIGNATURE`), or partner "
+                    "passcode (`X-RingScout-Passcode`) with `execution_mode='live_pstn'` to dial real +91 phone lines."
                 ),
-                "tags": ["google-maps", "voice-ai", "hotels", "restaurants", "clinics", "petrol", "mri", "pharmacy", "mcp", "a2a"],
+                "tags": ["google-maps", "voice-ai", "hotels", "restaurants", "spas", "clinics", "petrol", "mri", "pharmacy", "mcp", "a2a"],
+                "inputModes": ["text", "application/json"],
+                "outputModes": ["text", "application/json", "audio/wav"],
+                "inputSchema": _SCOUT_MCP_INPUT_SCHEMA,
                 "examples": [
+                    "Call Bastian in Bandra West, Mumbai and ask if a table for 4 is available tonight at 8:30 PM.",
                     "Call top 3 hotels in Bandra West, Mumbai to check room availability tonight, 10 AM early check-in, and direct phone tariff in ₹.",
-                    "Call restaurants in Indiranagar, Bengaluru to check table for 4 at 8:30 PM tonight with outdoor seating.",
                     "Check which petrol pump in Bandra West has XP95 petrol and nitrogen air working right now.",
                 ],
             }
