@@ -12,6 +12,11 @@
 - **Live Consumer Web App**: https://ringscout-hom7ntreuq-uc.a.run.app/
 - **Live Agentic & MCP Telemetry**: https://ringscout-hom7ntreuq-uc.a.run.app/dashboard
 - **Remote MCP Endpoint (Zero Install)**: `https://ringscout-hom7ntreuq-uc.a.run.app/mcp`
+- **⭐ Free Developer Tier**: Call #1 works immediately with zero setup; star this repo and pass `github_username` to unlock **5 free live `+91` calls/day**!
+
+### 🎬 Watch Real Live `+91` Restaurant Calls (`57s` Demo — Audio ON)
+[![Watch RingScout Live PSTN Demo Video](https://github.com/manavaga/ringscout/releases/download/v3.0.0/agentic_marketplace_poster.jpg)](https://github.com/manavaga/ringscout/releases/download/v3.0.0/ringscout_live_calls_demo.mp4)
+> **[▶ Click to play the 1080p MP4 demo (with real Hakkasan & CinCin PSTN audio)](https://github.com/manavaga/ringscout/releases/download/v3.0.0/ringscout_live_calls_demo.mp4)** · **[🔊 Listen to uncut 57s live A2A call + IVR keypad navigation (`.wav`)](https://github.com/manavaga/ringscout/releases/download/v3.0.0/live_pstn_a2a_cincin.wav)**
 
 ---
 
