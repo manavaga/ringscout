@@ -1,48 +1,49 @@
 # RingScout Terms of Use
 
-**Draft status:** Operator verification required before these terms are treated as final  
-**Last updated:** 25 November 2026
+**Operator:** Manav Agarwal  
+**Contact:** agarwalmanav91@gmail.com  
+**Last updated:** 25 November 2026  
+**Status:** Draft — legal review and launch security changes required
 
-> **Publication gate:** These terms are a working draft for an independently operated software service. The operator must confirm identity, contact details, pricing, geographic scope, legal requirements and operational behavior before publication. This is not legal advice and is not a substitute for review by qualified counsel.
+These Terms govern use of RingScout, including its website, remote MCP service, APIs and related interfaces. They are intended for an independently operated service and should be reviewed by qualified Indian counsel before public launch.
 
 ## 1. Agreement and operator
 
-These Terms govern access to and use of RingScout, including its website, remote MCP service, APIs and related interfaces.
+RingScout is operated by **Manav Agarwal**, an individual developer.
 
-**Operator:** [CONFIRM INDIVIDUAL LEGAL NAME OR REGISTERED ENTITY]  
-**Contact:** [ADD MONITORED SUPPORT EMAIL OR OTHER CONTACT]
+By accessing or using RingScout, you agree to these Terms. If you use RingScout on behalf of an organization, you represent that you are authorized to bind that organization. If you do not agree, do not use the service.
 
-By accessing or using RingScout, you agree to these Terms. If you do not agree, do not use the service. If you use RingScout on behalf of an organization, you represent that you are authorized to bind that organization.
+Contact: **agarwalmanav91@gmail.com**
 
 ## 2. What the service provides
 
-RingScout discovers businesses using public business listing information and may place AI-assisted outbound voice calls to ask questions requested by a user. It may return information such as whether a business answered, reported availability, waiting time, appointment slots, service details, quoted prices and call audio where available.
+RingScout searches for businesses listed on Google Maps and may place AI-assisted outbound voice calls to their public business telephone numbers in India. It may return call status, availability, wait times, appointment slots, service details, quoted prices, transcripts and call audio.
 
-RingScout is an information-gathering tool. Unless a separate feature expressly states otherwise, it does not make reservations, appointments, purchases, payments or binding commitments for you.
+RingScout is an information-gathering service. It does not itself make reservations, appointments, purchases or binding commitments unless a separate feature expressly says otherwise.
 
-## 3. Eligibility and authority to use the service
+## 3. Eligibility and lawful use
 
-You must be legally permitted to use the service in your location and have authority to submit the requests you make.
+You must be legally permitted to use RingScout in your location and have authority to submit the requests you make.
 
-You must have a lawful and legitimate purpose for requesting a call. You must not use RingScout to harass, threaten, deceive, impersonate, stalk, discriminate against or unlawfully contact any person or business.
+You must have a lawful and legitimate purpose for each call. You must not use RingScout to harass, threaten, deceive, impersonate, stalk, discriminate against or unlawfully contact any person or business.
 
-You must not request calls that violate applicable telemarketing, privacy, consumer protection, telecommunications, recording or other laws. You are responsible for ensuring that the purpose and content of your requested calls are lawful.
+You must not request calls that violate applicable privacy, consumer-protection, telecommunications, unsolicited-commercial-communications, recording or other laws. You are responsible for ensuring that the purpose and content of your requests are lawful.
 
-## 4. AI voice calls and recording
+## 4. AI voice calls and recordings
 
-RingScout uses an AI voice assistant to communicate with business telephone numbers. The assistant is intended to identify itself as an AI assistant calling on the user's behalf and disclose recording. You must not attempt to bypass, remove or contradict these disclosures.
+RingScout uses an AI voice assistant to communicate with business telephone numbers. You must not use the service to impersonate a specific person, conceal the automated nature of a call, obtain confidential information deceptively or pressure a recipient to continue a call.
 
-You must not ask RingScout to impersonate a specific person, conceal its automated nature, obtain confidential information deceptively, or pressure a recipient to continue a call.
+**Important current limitation:** the source inspected on 25 November 2026 does not proactively disclose the AI nature of the call or recording in the initial greeting. It only instructs the agent to identify itself as a RingScout AI assistant if asked. The operator intends to correct this before public launch. Do not rely on a proactive disclosure being made until the updated call flow is deployed and tested.
 
 Call recipients may decline to answer or end a call. RingScout may be unable to reach a business, navigate an IVR, obtain an answer or complete a call.
 
 ## 5. Accuracy and reliance
 
-Information returned by RingScout reflects what could be obtained from business listings and calls at a particular point in time. Business staff may provide incomplete, mistaken or changing information. A business may later change its availability, prices, stock, policies or operating hours.
+Information returned by RingScout reflects what could be obtained from business listings and calls at a particular time. Business staff may provide incomplete, mistaken or changing information. Availability, prices, stock, policies and operating hours may change.
 
-RingScout does not independently guarantee that a statement by a business is accurate or that the business will honor a quote or availability statement. You should confirm important details directly with the business before travelling, paying, booking or making a decision.
+RingScout does not guarantee that a statement by a business is accurate or that the business will honor a quote or availability statement. Confirm important details directly with the business before travelling, paying, booking or making a decision.
 
-Call audio and summaries are provided as supporting information, not as a guarantee, certification or endorsement.
+Call audio and summaries are supporting information, not a guarantee, certification or endorsement.
 
 ## 6. Acceptable use
 
@@ -53,42 +54,37 @@ You agree not to:
 - attempt to obtain sensitive, confidential or payment information through deception;
 - use returned audio, transcripts or personal data to harass, threaten, shame or unlawfully profile anyone;
 - interfere with or disrupt the service, circumvent rate limits, probe systems without authorization or attempt to access secrets or other users' data;
-- reverse engineer or misuse the service except to the extent such restrictions are prohibited by applicable law;
 - resell or redistribute access in a way that violates applicable laws or separate written terms.
 
-We may limit, suspend or refuse requests that appear abusive, unsafe, unlawful or likely to harm recipients or the service.
+The operator may limit, suspend or refuse requests that appear abusive, unsafe, unlawful or likely to harm recipients or the service.
 
 ## 7. Third-party services
 
-RingScout relies on third-party services, which may include mapping and business listing providers, cloud infrastructure, AI model providers, telephony carriers and payment processors. Your use of those services may also be subject to their terms and policies.
+RingScout relies on third-party services, including Google Cloud Run, Google Vertex AI/Gemini, Google Maps/business listing services and Vobiz telephony. The source also supports other telephony adapters; the active provider may change. Your use may also be subject to those providers' terms and policies.
 
 RingScout does not control the availability, accuracy, policies or actions of third-party providers or the businesses that receive calls.
 
 ## 8. Pricing, quotas and payments
 
-The project may offer a free usage allowance and may support paid or metered calls through payment providers. Actual limits, prices, eligibility, taxes and payment methods must be displayed in the interface or pricing documentation applicable to your use.
+Usage limits, free allowances, prices, eligibility, taxes and payment methods are those displayed in the service or applicable pricing endpoint at the time of use. The project contains code for metered payment flows, but paid access must not be assumed to be enabled unless the service clearly presents a charge and payment authorization before the call is placed.
 
-**Current published service information:** https://github.com/manavaga/ringscout
-
-Do not assume that a free allowance or a price shown in documentation will remain unchanged. Any chargeable request should disclose the applicable price and payment flow before the charge is incurred. Payment disputes and refunds are handled according to the applicable checkout terms and mandatory law.
-
-**Operator verification required:** confirm whether paid calls are enabled for the public service, current prices, free-tier rules, billing triggers, refund process and the applicable payment provider before publishing final terms.
+Any chargeable request should disclose the applicable price and payment flow before the charge is incurred. Payment disputes and refunds are handled according to the applicable checkout terms and mandatory law.
 
 ## 9. Intellectual property
 
-The RingScout project may include open-source software under the license identified in the relevant repository files. The repository's license governs rights to the licensed code. These Terms do not grant rights to third-party business listing data, voice recordings, provider services, trademarks or other third-party materials.
+The RingScout source code is made available under the license identified in the repository. That license governs rights to the licensed code. These Terms do not grant rights to third-party business listing data, call recordings, provider services, trademarks or other third-party materials.
 
-You retain responsibility for ensuring that your use and redistribution of call audio, business information and other output complies with applicable law and third-party rights.
+You are responsible for ensuring that your use and redistribution of call audio, transcripts, business information and other output complies with applicable law and third-party rights.
 
 ## 10. Privacy
 
-Use of RingScout is also subject to the [Privacy Notice](PRIVACY.md). That notice must describe the actual data collected, recording practices, service providers, retention and privacy contact details.
+Use of RingScout is also subject to the [Privacy Notice](PRIVACY.md). The Privacy Notice describes current in-memory processing, audio proof, transcripts, operational logs and third-party services. It also identifies outstanding launch issues. Do not use RingScout in a way that requires guarantees the service does not currently provide.
 
 ## 11. Service availability and changes
 
 RingScout is provided on an evolving basis. Features may change, become temporarily unavailable or be discontinued. Unless separately agreed in writing, no uptime commitment or service-level agreement is provided.
 
-We may impose technical limits, maintenance windows or usage restrictions to protect the service, recipients and infrastructure.
+The operator may impose technical limits, maintenance windows or usage restrictions to protect the service, recipients and infrastructure.
 
 ## 12. Disclaimers
 
@@ -100,9 +96,7 @@ Nothing in these Terms excludes a warranty or right that cannot legally be exclu
 
 To the maximum extent permitted by applicable law, the operator will not be liable for indirect, incidental, special, exemplary or consequential losses, loss of profits, loss of data, business interruption, or decisions made in reliance on information returned by a business or RingScout.
 
-**Liability cap:** No numerical liability cap is set in this draft. The operator should determine an appropriate cap and exclusions after qualified legal review, taking applicable consumer and other mandatory laws into account.
-
-These limitations do not apply to liability that cannot be limited under applicable law, including liability arising from fraud or willful misconduct where such limitation is prohibited.
+No numerical liability cap is set in this draft. Any liability limitation must be reviewed by qualified Indian counsel and cannot exclude liability that applicable law does not permit to be excluded.
 
 ## 14. Indemnity
 
@@ -114,16 +108,17 @@ You may stop using RingScout at any time. The operator may suspend or restrict a
 
 ## 16. Governing law and disputes
 
-**Governing law and venue:** [OPERATOR TO CONFIRM JURISDICTION AND APPROPRIATE DISPUTE RESOLUTION TERMS AFTER LEGAL REVIEW].
+These Terms are governed by the laws of **India**, without regard to conflict-of-law principles. Subject to mandatory consumer-protection and other applicable laws, disputes will be submitted to courts of competent jurisdiction in India.
 
-Nothing in this section limits mandatory consumer rights or other protections that apply under the law governing your use.
+Nothing in this section limits mandatory rights or protections that apply under applicable law.
 
-## 17. Changes to these Terms
+## 17. Changes
 
-We may revise these Terms as the service evolves. The updated version will be posted at this URL with a revised "Last updated" date. Continued use after changes take effect constitutes acceptance only to the extent permitted by applicable law.
+The operator may revise these Terms as the service evolves. The updated version will be posted at this URL with a revised "Last updated" date. Continued use after changes take effect constitutes acceptance only to the extent permitted by applicable law.
 
 ## 18. Contact
 
-**Operator:** [CONFIRM INDIVIDUAL LEGAL NAME OR REGISTERED ENTITY]  
-**Support / legal contact:** [ADD MONITORED EMAIL]  
+**Operator:** Manav Agarwal  
+**Email:** agarwalmanav91@gmail.com  
+**Support:** https://github.com/manavaga/ringscout/issues  
 **Repository:** https://github.com/manavaga/ringscout
