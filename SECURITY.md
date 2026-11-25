@@ -4,7 +4,7 @@
 
 Please do not disclose security vulnerabilities in public GitHub issues, pull requests or discussions.
 
-Use GitHub's private vulnerability reporting feature for this repository if it is enabled. If private reporting is not available, contact the operator at **[ADD MONITORED SECURITY EMAIL]** and request a secure reporting channel.
+Use GitHub's private vulnerability reporting feature for this repository if it is enabled. If private reporting is not available, contact the operator at **agarwalmanav91@gmail.com** and request a secure reporting channel.
 
 ## What to include
 
