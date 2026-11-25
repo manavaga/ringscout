@@ -28,8 +28,8 @@ RingScout can contact up to **five businesses in parallel** and return verified 
 ---
 
 ### Watch Real Live `+91` Calls (`57s` Demo — Audio ON)
-[![Watch RingScout Live PSTN Demo Video](https://github.com/manavaga/ringscout/releases/download/v3.0.0/agentic_marketplace_poster.jpg)](https://github.com/manavaga/ringscout/releases/download/v3.0.0/ringscout_live_calls_demo.mp4)
-> **[▶ Play 1080p MP4 demo (real Hakkasan & CinCin calls)](https://github.com/manavaga/ringscout/releases/download/v3.0.0/ringscout_live_calls_demo.mp4)** · **[🔊 Listen to uncut 57s live A2A call + IVR keypad navigation (`.wav`)](https://github.com/manavaga/ringscout/releases/download/v3.0.0/live_pstn_a2a_cincin.wav)**
+[![Watch RingScout Live PSTN Demo Video](https://ringscout-hom7ntreuq-uc.a.run.app/demo_poster.jpg)](https://ringscout-hom7ntreuq-uc.a.run.app/demo)
+> **[▶ Watch 57s demo inline in browser (real Hakkasan & CinCin calls)](https://ringscout-hom7ntreuq-uc.a.run.app/demo)** · **[⬇ Download MP4](https://github.com/manavaga/ringscout/releases/download/v3.0.0/ringscout_live_calls_demo.mp4)**
 
 ---
 
