@@ -1,8 +1,8 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.manavaga/ringscout",
-  "title": "RingScout — Google Maps Parallel Voice Scout",
-  "description": "Calls open Google Maps places (+91) in parallel to verify live availability, slots, and INR rates.",
+  "title": "RingScout — Real-time local voice checks",
+  "description": "Real-time local voice checks — calls Google Maps places in India to verify availability & rates.",
   "version": "3.0.0",
   "websiteUrl": "https://ringscout-hom7ntreuq-uc.a.run.app",
   "repository": {

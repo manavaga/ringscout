@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RingScout — Parallel AI Voice Calls for Google Maps Places</title>
-  <meta name="description" content="Find any spa, salon, hotel, restaurant, MRI lab, or local business on Google Maps — or add a specific place — and call them in parallel in natural Indian English or Hindi." />
+  <title>RingScout — Real-time local voice checks</title>
+  <meta name="description" content="RingScout finds local businesses on Google Maps in India and calls them directly in Indian English, Hindi, or Hinglish to verify live availability, wait times, and ₹ prices." />
   <link rel="canonical" href="https://ringscout-hom7ntreuq-uc.a.run.app/" />
   <link rel="ai-catalog" type="application/ai-catalog+json" href="/.well-known/ai-catalog.json" />
   <link rel="mcp-server-card" type="application/mcp-server-card+json" href="/.well-known/mcp/server-card.json" />
@@ -35,7 +35,7 @@
           "https://glama.ai/mcp/servers/manavaga/ringscout",
           "https://registry.modelcontextprotocol.io/v0/servers?search=ringscout"
         ],
-        "description": "Parallel AI voice agent that calls real open Google Maps businesses (+91) in natural Indian English and Hindi to confirm live availability, appointments, and INR pricing with 24kHz WAV proof."
+        "description": "RingScout finds local businesses on Google Maps in India and calls them directly in Indian English, Hindi, or Hinglish to verify live availability, wait times, and ₹ prices with recorded call audio when available."
       },
       {
         "@type": "WebAPI",
@@ -660,8 +660,8 @@
 
   <main class="main">
     <section class="hero">
-      <h1>Call local places in parallel. Get live answers.</h1>
-      <p>Search any restaurant, salon, hotel, clinic, or diagnostic lab on Google Maps — or add a specific place by name — and let RingScout check on the phone for you.</p>
+      <h1>Real-time local voice checks</h1>
+      <p>RingScout finds local businesses on Google Maps in India and calls up to five in parallel in Indian English, Hindi, or Hinglish to verify availability, wait times, and ₹ prices right now.</p>
     </section>
 
     <section class="command-card" aria-label="Voice Search Composer">
@@ -769,6 +769,12 @@
       </div>
       <div class="calls-grid" id="callsGrid"></div>
     </section>
+
+    <footer style="margin-top:36px;padding-top:18px;border-top:1px solid var(--border);font-size:0.79rem;color:var(--ink-subtle);line-height:1.6;">
+      <strong style="color:var(--ink-muted);">Coverage:</strong> India, across supported local business categories and locations on Google Maps. &middot;
+      <strong style="color:var(--ink-muted);">Important limitations:</strong> Results depend on businesses being reachable and answering. Availability and prices can change after a call. RingScout provides information; it does not itself make reservations, purchases, or appointments. &middot;
+      <a href="/privacy" style="color:var(--ink-muted);text-decoration:underline;">Privacy Policy</a>
+    </footer>
   </main>
 
   <script>

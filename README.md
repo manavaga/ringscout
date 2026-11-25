@@ -1,29 +1,51 @@
-# RingScout — Parallel AI Voice Scout for Google Maps (`MCP` · `Google A2A` · `OpenAPI` · `x402` · `Stripe MPP`)
+# RingScout
+
+**Real-time local voice checks**
 
 [![Official MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.manavaga%2Fringscout-10b981?style=flat-square)](https://registry.modelcontextprotocol.io/v0/servers?search=ringscout)
 [![manavaga/ringscout MCP server](https://glama.ai/mcp/servers/manavaga/ringscout/badges/score.svg)](https://glama.ai/mcp/servers/manavaga/ringscout)
-[![MCP Protocol](https://img.shields.io/badge/MCP-2025--06--18_Streamable_HTTP_%2B_SSE-6366f1?style=flat-square)](https://ringscout-hom7ntreuq-uc.a.run.app/mcp)
-[![Google A2A](https://img.shields.io/badge/Google_A2A-v1.0_Agent_Card-38bdf8?style=flat-square)](https://ringscout-hom7ntreuq-uc.a.run.app/.well-known/agent-card.json)
-[![SEP-2127](https://img.shields.io/badge/SEP--2127-Server_Card_%2B_AI_Catalog-f59e0b?style=flat-square)](https://ringscout-hom7ntreuq-uc.a.run.app/.well-known/mcp/server-card.json)
+[![Remote MCP](https://img.shields.io/badge/Remote_MCP-Streamable_HTTP-6366f1?style=flat-square)](https://ringscout-hom7ntreuq-uc.a.run.app/mcp)
+[![Google A2A](https://img.shields.io/badge/Google_A2A-v1.0-38bdf8?style=flat-square)](https://ringscout-hom7ntreuq-uc.a.run.app/.well-known/agent-card.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-slate?style=flat-square)](LICENSE)
 
-**RingScout** gives any AI agent, IDE, or human user a real-world voice presence: it finds open businesses on Google Maps (restaurants, hotels, spas, salons, MRI & diagnostic labs, clinics, petrol/EV stations, auto shops, pharmacies) and calls them **in parallel** over real `+91` phone lines in natural Indian English (`en-IN`) and Hindi/Hinglish (`hi-IN`), returning verified live availability, wait times, `₹` rates, and playable `24kHz` `.wav` audio proof.
+RingScout finds local businesses on Google Maps and calls them directly to verify what's happening right now.
 
-- **Live Consumer Web App**: https://ringscout-hom7ntreuq-uc.a.run.app/
-- **Live Agentic & MCP Telemetry**: https://ringscout-hom7ntreuq-uc.a.run.app/dashboard
-- **Remote MCP Endpoint (Zero Install)**: `https://ringscout-hom7ntreuq-uc.a.run.app/mcp`
-- **⭐ Free Developer Tier**: Call #1 works immediately with zero setup; star this repo and pass `github_username` to unlock **5 free live `+91` calls/day**!
+Instead of relying only on potentially outdated listings, RingScout uses AI-powered voice calls to contact real business phone numbers in India, ask your questions in Indian English, Hindi, or Hinglish, and return the answers.
 
-### 🎬 Watch Real Live `+91` Restaurant Calls (`57s` Demo — Audio ON)
-[![Watch RingScout Live PSTN Demo Video](https://github.com/manavaga/ringscout/releases/download/v3.0.0/agentic_marketplace_poster.jpg)](https://github.com/manavaga/ringscout/releases/download/v3.0.0/ringscout_live_calls_demo.mp4)
-> **[▶ Click to play the 1080p MP4 demo (with real Hakkasan & CinCin PSTN audio)](https://github.com/manavaga/ringscout/releases/download/v3.0.0/ringscout_live_calls_demo.mp4)** · **[🔊 Listen to uncut 57s live A2A call + IVR keypad navigation (`.wav`)](https://github.com/manavaga/ringscout/releases/download/v3.0.0/live_pstn_a2a_cincin.wav)**
+### Find out:
+- Whether a **restaurant** has a table available and how long the wait is
+- Whether a **hotel** has rooms, early check-in, or a better direct tariff
+- Whether a **salon or spa** has a same-day appointment
+- Whether a **clinic or diagnostic centre** has an available slot and what it charges
+- Whether a **petrol pump** has a particular fuel or service available
+- Whether a **pharmacy or auto shop** has the item or service you need
+
+RingScout can contact up to **five businesses in parallel** and return verified responses, prices in **₹**, key details, and recorded call audio when available.
+
+- **Coverage:** India, with supported local business categories and locations.
+- **Important limitations:** Results depend on businesses being reachable and answering. Availability and prices can change after a call. RingScout provides information; it does not itself make reservations, purchases, or appointments.
 
 ---
 
-## Connect in 10 Seconds (Zero Local Install Required)
+### Watch Real Live `+91` Calls (`57s` Demo — Audio ON)
+[![Watch RingScout Live PSTN Demo Video](https://github.com/manavaga/ringscout/releases/download/v3.0.0/agentic_marketplace_poster.jpg)](https://github.com/manavaga/ringscout/releases/download/v3.0.0/ringscout_live_calls_demo.mp4)
+> **[▶ Play 1080p MP4 demo (real Hakkasan & CinCin calls)](https://github.com/manavaga/ringscout/releases/download/v3.0.0/ringscout_live_calls_demo.mp4)** · **[🔊 Listen to uncut 57s live A2A call + IVR keypad navigation (`.wav`)](https://github.com/manavaga/ringscout/releases/download/v3.0.0/live_pstn_a2a_cincin.wav)**
 
-### Claude (`claude.ai` Web & Desktop)
-*Settings → Connectors → Add Custom Connector* → paste:
+---
+
+## Try It or Connect Your AI Assistant
+
+- **Web App (No install):** https://ringscout-hom7ntreuq-uc.a.run.app/
+- **Live Call & Agent Dashboard:** https://ringscout-hom7ntreuq-uc.a.run.app/dashboard
+- **Remote MCP Endpoint:** `https://ringscout-hom7ntreuq-uc.a.run.app/mcp`
+- **Free Developer Tier:** Your first live call works out of the box; ⭐ **star this repository** and pass your `github_username` to unlock **5 free live `+91` calls/day**.
+
+### ChatGPT (`Plugins → + → Add custom MCP server`)
+- **Name:** `RingScout`
+- **Server URL:** `https://ringscout-hom7ntreuq-uc.a.run.app/mcp`
+- **Authentication:** `No authentication`
+
+### Claude (`Settings → Connectors → Add custom connector`)
 ```text
 https://ringscout-hom7ntreuq-uc.a.run.app/mcp
 ```
@@ -39,52 +61,48 @@ https://ringscout-hom7ntreuq-uc.a.run.app/mcp
 }
 ```
 
-### ChatGPT (Developer Mode MCP or Custom GPT Actions)
-- **Developer Mode MCP**: *Settings → Connectors → Create* → `https://ringscout-hom7ntreuq-uc.a.run.app/mcp`
-- **Custom GPT Actions**: *Configure → Actions → Import from URL* → `https://ringscout-hom7ntreuq-uc.a.run.app/openapi-actions.json`
-
-### Live `curl` Handshake Test
+### Google A2A v1.0 (`POST /a2a`)
 ```bash
-curl -s https://ringscout-hom7ntreuq-uc.a.run.app/mcp \
+curl -X POST https://ringscout-hom7ntreuq-uc.a.run.app/a2a \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jq .
+  -d '{
+    "jsonrpc": "2.0",
+    "id": "1",
+    "method": "message/send",
+    "params": {
+      "message": {
+        "messageId": "m1",
+        "role": "user",
+        "parts": [{"kind": "text", "text": "Call CinCin in BKC Mumbai and ask if a table for 4 is open tonight at 8:30 PM"}]
+      }
+    }
+  }'
 ```
 
 ---
 
-## Complete Machine-Readable Agent Discovery Matrix
+## Machine-Readable Discovery Endpoints
 
-RingScout implements every 2026 agent discovery, protocol, and web-linking standard (including RFC 8288 `Link` HTTP headers and Schema.org `WebAPI` JSON-LD on `/`):
-
-| Layer | Standard | Live Machine-Readable Endpoint |
+| Interface | Standard | Endpoint |
 | :--- | :--- | :--- |
-| **Vertical Tooling (MCP)** | Streamable HTTP (`2025-11-25` / `2025-06-18`) | `POST https://ringscout-hom7ntreuq-uc.a.run.app/mcp` |
-| **Legacy & Dual MCP** | HTTP+SSE (`2024-11-05`) + Dual POST | `GET / POST https://ringscout-hom7ntreuq-uc.a.run.app/sse` |
-| **MCP Auto-Discovery** | `SEP-2127` Server Card + Official Registry `2025-12-11` | `/.well-known/mcp/server-card.json` · `/.well-known/mcp.json` · `/server.json` |
-| **Horizontal Peer Agents** | Google / Linux Foundation **A2A v1.0** | `/.well-known/agent-card.json` · `POST /a2a` |
-| **Domain AI Catalog** | `SEP-2127` / `ai-catalog` (`specVersion: 1.0`) | `/.well-known/ai-catalog.json` · `/.well-known/ai-catalog` |
-| **Multi-Agent Workflows** | `agents.json` + OpenAPI 3.1 Actions | `/.well-known/agents.json` · `/openapi-actions.json` · `/.well-known/ai-plugin.json` |
-| **AI Search / GEO** | LLM Markdown Index + Bot Allowlist | `/llms.txt` · `/llms-full.txt` · `/robots.txt` · `/sitemap.xml` |
-| **Agentic Payments** | `x402` v2 Base USDC + Stripe `MPP` + Google `AP2` | `/.well-known/x402` · `/api/v1/pricing` · `POST /api/v1/scout` |
-| **Health & Trust** | Directory Uptime Probe + RFC 9116 Security | `/ping` · `/mcp/health` · `/.well-known/security.txt` |
+| **Remote MCP** | Streamable HTTP (`2025-11-25` / `2025-06-18`) + SSE (`2024-11-05`) | `POST /mcp` · `GET /sse` |
+| **MCP Discovery** | `SEP-2127` Server Card + Official Registry `2025-12-11` | `/.well-known/mcp/server-card.json` · `/server.json` |
+| **Agent-to-Agent** | Google / Linux Foundation **A2A v1.0** | `/.well-known/agent-card.json` · `POST /a2a` |
+| **Domain AI Catalog** | `SEP-2127` AI Catalog + `agents.json` + OpenAPI `3.1` | `/.well-known/ai-catalog.json` · `/openapi-actions.json` |
+| **AI Search & Trust** | `llms.txt` + Privacy & Call Disclosure Policy | `/llms.txt` · `/privacy` · `/ping` |
 
 ---
 
-## Architecture Highlights
+## Architecture & Local Development
 
-- **Thin Live Socket + Out-of-Band Side-Brain**: Zero tools are attached to the `BidiGenerateContent` Gemini Live voice socket (eliminating mid-call tool-turn stalls). A separate `gemini-2.5-flash` Side-Brain (`temperature=0.0`) extracts `₹` quotes, slot times, and IVR DTMF digits asynchronously after each turn.
-- **Zero-Leak Security via Google Cloud Secret Manager**: All telephony (`Vobiz` / `Plivo` / `Twilio`), HMAC, and admin credentials live exclusively in Google Cloud Secret Manager (`scripts/setup_gcp_secrets.sh`).
-
----
-
-## Local Development & Verification
+- **Thin Live Socket + Out-of-Band Side-Brain:** Duplex voice runs over Gemini Live (`en-IN` / `hi-IN`) with zero inline tools attached to the audio stream; an out-of-band `gemini-2.5-flash` Side-Brain extracts `₹` prices, slot details, and IVR keypad digits asynchronously.
+- **Public Business Provenance:** Only verified public business listings discovered on Google Maps may be dialed (`1800` toll-free lines and unlisted personal numbers are blocked).
+- **Secret Hygiene:** Carrier (`Vobiz` / `Plivo` / `Twilio`) and admin credentials are stored exclusively in Google Cloud Secret Manager (`scripts/setup_gcp_secrets.sh`).
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 pytest -q
-
-# Run the External Agent & Directory Scanner Audit against any host
 python3 scripts/verify_mcp_discovery.py https://ringscout-hom7ntreuq-uc.a.run.app
 ```
 

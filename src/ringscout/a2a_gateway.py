@@ -705,11 +705,14 @@ def build_agent_card(base_url: str, live_pstn_ready: bool) -> dict[str, Any]:
     pay_state = masked_payment_status()
     return {
         "protocolVersion": "1.0",
-        "name": "RingScout — Real-Time Google Maps Voice Insights Agent",
+        "name": "RingScout — Real-time local voice checks",
         "description": (
-            "Calls real open hotels, restaurants, clinics, MRI/diagnostic centers, petrol pumps, salons, auto shops, "
-            "or pharmacies found on Google Maps in parallel (en-IN / hi-IN) to verify live availability, wait times, "
-            "tariffs/rates in ₹, and custom questions with 24kHz .wav audio proof."
+            "RingScout finds local businesses on Google Maps and calls them directly in India (Indian English, "
+            "Hindi, or Hinglish) to verify what's happening right now—live restaurant tables & wait times, hotel "
+            "rooms & direct tariffs, salon/spa appointments, clinic/diagnostic slots & charges, petrol pump fuel/services, "
+            "and pharmacy or auto shop availability. Contacts up to five businesses in parallel and returns verified "
+            "responses, prices in ₹, key details, and recorded call audio when available. RingScout provides "
+            "information; it does not itself make reservations, purchases, or appointments."
         ),
         "url": f"{clean_base}/a2a",
         "version": "3.0.0",
@@ -790,15 +793,14 @@ def build_agent_card(base_url: str, live_pstn_ready: bool) -> dict[str, Any]:
         "skills": [
             {
                 "id": "scout_places_on_google_maps",
-                "name": "Call Google Maps Places for Live Availability, Rates & Insights",
+                "name": "Real-time local voice checks on Google Maps",
                 "description": (
-                    "Finds open hotels, restaurants, spas, salons, clinics, MRI centers, petrol pumps, auto garages, "
-                    "or pharmacies on Google Maps, dials their real +91 phone lines in parallel via Vobiz SIP + Gemini 3.8 Live "
-                    "(en-IN / hi-IN) with street-landmark confidence markers, and returns verified live availability, ₹ rates, "
-                    "key answers, and real recorded 24kHz .wav audio proof. Phase A includes a daily free real-call developer "
-                    "allowance (up to 2 places per free call; automated bots/crawlers receive HTTP 402); attach Stripe MPP "
-                    "(`Authorization: Payment <spt>`), x402 Base USDC (`PAYMENT-SIGNATURE`), or partner passcode "
-                    "(`X-RingScout-Passcode`) for up to 5 parallel live +91 calls."
+                    "Finds local businesses on Google Maps in India (restaurants, hotels, salons, spas, clinics, "
+                    "diagnostic centres, petrol pumps, pharmacies, auto shops) and calls up to five businesses in "
+                    "parallel in Indian English, Hindi, or Hinglish to verify live availability, wait times, and "
+                    "prices in ₹, with recorded call audio when available. Results depend on businesses being "
+                    "reachable and answering; RingScout provides information and does not make reservations, "
+                    "purchases, or appointments."
                 ),
                 "tags": ["google-maps", "voice-ai", "hotels", "restaurants", "spas", "clinics", "petrol", "mri", "pharmacy", "mcp", "a2a"],
                 "inputModes": ["text", "application/json"],
@@ -1606,7 +1608,7 @@ OFFICIAL_MCP_SCHEMA_URL = "https://static.modelcontextprotocol.io/schemas/2025-1
 SEP2127_SERVER_CARD_SCHEMA_URL = "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json"
 MAX_MCP_BATCH_SIZE = 32
 MCP_SHORT_DESCRIPTION = (
-    "Calls open Google Maps places (+91) in parallel to verify live availability, slots, and INR rates."
+    "Real-time local voice checks — calls Google Maps places in India to verify availability & rates."
 )
 SUPPORTED_MCP_PROTOCOL_VERSIONS: tuple[str, ...] = (
     "2025-11-25",
@@ -1615,23 +1617,23 @@ SUPPORTED_MCP_PROTOCOL_VERSIONS: tuple[str, ...] = (
     "2024-11-05",
 )
 MCP_SERVER_INSTRUCTIONS = (
-    "Use RingScout whenever a user needs real-time offline facts from a physical business that websites, "
-    "aggregators, or static Google Maps listings cannot answer—such as calling open restaurants (live table "
-    "availability, wait times, outdoor/rooftop seating), hotels (early check-in, direct phone tariff in ₹), "
-    "spas/salons, clinics/MRI centers (same-day slots, walk-in cash price), petrol/EV stations, auto shops, "
-    "or pharmacies. Call `get_ringscout_pricing_and_status` for read-only health/capabilities, or "
-    "`scout_places_on_google_maps` to place up to 5 parallel natural en-IN/hi-IN voice calls with 24kHz WAV proof."
+    "RingScout finds local businesses on Google Maps in India and calls them directly in Indian English, "
+    "Hindi, or Hinglish to verify what's happening right now: restaurant table availability & wait times, "
+    "hotel rooms, early check-in & direct tariffs, same-day salon/spa appointments, clinic/diagnostic slots & "
+    "charges, petrol pump fuel/services, and pharmacy or auto shop items. Contacts up to five businesses in "
+    "parallel and returns verified responses, prices in ₹, key details, and recorded call audio when available. "
+    "Important limitations: Results depend on businesses being reachable and answering, and availability/prices "
+    "can change after a call. RingScout provides information; it does not make reservations, purchases, or appointments."
 )
 
 MCP_TOOLS_SPEC: list[dict[str, Any]] = [
     {
         "name": "get_ringscout_pricing_and_status",
-        "title": "Check RingScout Voice Capabilities, Pricing & Live Status",
+        "title": "Check RingScout Coverage, Capabilities & Status",
         "description": (
-            "Read-only free tool returning RingScout's real-time Google Maps voice-scouting capabilities, "
-            "active payment gate mode (Phase A open free tier vs Phase B Stripe MPP / x402 USDC), "
-            "supported categories (hotels, restaurants, spas, salons, clinics, MRI, petrol, auto, pharmacies), "
-            "and live PSTN carrier readiness."
+            "Read-only free tool returning RingScout's coverage (India), supported local business categories "
+            "(restaurants, hotels, salons, spas, clinics, diagnostic centres, petrol pumps, pharmacies, auto shops), "
+            "active free/paid call status, and live telephony readiness."
         ),
         "inputSchema": {
             "type": "object",
@@ -1639,7 +1641,7 @@ MCP_TOOLS_SPEC: list[dict[str, Any]] = [
             "additionalProperties": False,
         },
         "annotations": {
-            "title": "Check RingScout Status & Pricing",
+            "title": "Check RingScout Coverage & Status",
             "readOnlyHint": True,
             "destructiveHint": False,
             "idempotentHint": True,
@@ -1648,18 +1650,18 @@ MCP_TOOLS_SPEC: list[dict[str, Any]] = [
     },
     {
         "name": "scout_places_on_google_maps",
-        "title": "Call Open Google Maps Businesses in Parallel for Live Availability & ₹ Rates",
+        "title": "Real-time local voice checks for Google Maps businesses",
         "description": (
-            "Use this tool whenever the user needs real-time facts from a real-world business that websites and "
-            "booking apps don't show: calling hotels (early check-in, direct phone tariff), restaurants (live table "
-            "wait time, sold-out check, rooftop/pet policy), spas & salons (same-day slot), clinics & MRI centers "
-            "(same-day slot, walk-in cash price), petrol pumps & EV hubs (XP95 stock, nitrogen air, charger uptime), "
-            "auto shops, or pharmacies. Finds open Google Maps places, calls them in parallel in natural Indian "
-            "English / Hindi, and returns verified availability, ₹ rates, key insights, and 24kHz .wav audio proof."
+            "Finds local businesses on Google Maps in India and calls up to five in parallel in Indian English, "
+            "Hindi, or Hinglish to verify what's happening right now: restaurant tables & wait times, hotel rooms, "
+            "early check-in & direct tariffs, same-day salon/spa appointments, clinic/diagnostic slots & charges, "
+            "petrol pump fuel/services, or pharmacy/auto shop stock. Returns verified responses, prices in ₹, key "
+            "details, and recorded call audio when available. RingScout provides information only; it does not make "
+            "reservations, purchases, or appointments."
         ),
         "inputSchema": _SCOUT_MCP_INPUT_SCHEMA,
         "annotations": {
-            "title": "Scout Places on Google Maps via Parallel Voice Calls",
+            "title": "Real-Time Local Voice Check (Google Maps)",
             "readOnlyHint": False,
             "destructiveHint": False,
             "idempotentHint": False,
@@ -1668,11 +1670,11 @@ MCP_TOOLS_SPEC: list[dict[str, Any]] = [
     },
     {
         "name": "scout_india_local_businesses",
-        "title": "Call India (+91) Local Shops & Clinics in Hinglish / Indian English",
+        "title": "Call Local Businesses in India (Indian English / Hindi / Hinglish)",
         "description": (
-            "Alias for `scout_places_on_google_maps`: discovers up to 5 open +91 hotels, restaurants, spas, salons, "
-            "clinics, MRI centers, petrol stations, or pharmacies on Google Maps, calls them in parallel in natural "
-            "en-IN / hi-IN voice, and returns ranked ₹ quotes + playable .wav audio proof URLs."
+            "Alias for `scout_places_on_google_maps`: contacts up to five local businesses on Google Maps in India "
+            "in parallel to verify live availability, wait times, and ₹ prices, with recorded call audio when available. "
+            "Provides information only; does not make reservations, purchases, or appointments."
         ),
         "inputSchema": _SCOUT_MCP_INPUT_SCHEMA,
         "annotations": {
@@ -2189,12 +2191,13 @@ def build_openapi_actions_spec(base_url: str) -> dict[str, Any]:
     return {
         "openapi": "3.1.0",
         "info": {
-            "title": "RingScout — Real-Time Google Maps Voice Insights API",
+            "title": "RingScout — Real-time local voice checks",
             "version": "3.0.0",
             "description": (
-                "Calls real open hotels, restaurants, spas, salons, clinics, MRI centers, petrol pumps, auto shops, "
-                "or pharmacies found on Google Maps in parallel (Indian English & Hindi) to verify live room/table/slot "
-                "availability, wait times, ₹ tariffs/prices, and custom answers with playable .wav audio proof."
+                "RingScout finds local businesses on Google Maps in India and calls them directly in Indian English, "
+                "Hindi, or Hinglish to verify what's happening right now (up to five businesses in parallel, returning "
+                "verified responses, prices in ₹, key details, and recorded call audio when available). RingScout "
+                "provides information; it does not make reservations, purchases, or appointments."
             ),
         },
         "externalDocs": {
@@ -2357,7 +2360,7 @@ def build_official_server_json(
     return {
         "$schema": OFFICIAL_MCP_SCHEMA_URL,
         "name": namespace_name,
-        "title": "RingScout — Google Maps Parallel Voice Scout",
+        "title": "RingScout — Real-time local voice checks",
         "description": MCP_SHORT_DESCRIPTION,
         "version": "3.0.0",
         "websiteUrl": clean,
@@ -2385,7 +2388,7 @@ def build_mcp_server_card(base_url: str, live_pstn_ready: bool = True) -> dict[s
     return {
         "$schema": SEP2127_SERVER_CARD_SCHEMA_URL,
         "name": "io.github.manavaga/ringscout",
-        "title": "RingScout — Call Google Maps Places for Live Availability & Rates",
+        "title": "RingScout — Real-time local voice checks",
         "version": "3.0.0",
         "description": MCP_SHORT_DESCRIPTION,
         "websiteUrl": clean,
@@ -2554,9 +2557,9 @@ def build_ai_plugin_manifest(base_url: str) -> dict[str, Any]:
     clean = base_url.rstrip("/")
     return {
         "schema_version": "v1",
-        "name_for_human": "RingScout Voice Scout",
+        "name_for_human": "RingScout",
         "name_for_model": "ringscout_google_maps_voice",
-        "description_for_human": "Calls open Google Maps businesses (+91) in parallel to verify live availability, wait times, and ₹ rates.",
+        "description_for_human": "Real-time local voice checks — calls Google Maps businesses in India to verify availability & rates.",
         "description_for_model": MCP_SERVER_INSTRUCTIONS,
         "auth": {"type": "none"},
         "api": {
@@ -2565,5 +2568,5 @@ def build_ai_plugin_manifest(base_url: str) -> dict[str, Any]:
             "is_user_authenticated": False,
         },
         "contact_email": "manavagarwal@users.noreply.github.com",
-        "legal_info_url": f"{clean}/developers",
+        "legal_info_url": f"{clean}/privacy",
     }
