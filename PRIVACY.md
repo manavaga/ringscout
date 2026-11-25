@@ -1,113 +1,145 @@
 # RingScout Privacy Notice
 
-**Draft status:** Operator verification required before this notice is treated as final  
-**Last updated:** 25 November 2026
+**Operator:** Manav Agarwal  
+**Contact:** agarwalmanav91@gmail.com  
+**Last updated:** 25 November 2026  
+**Status:** Draft — production security and call-disclosure changes required before public launch
 
-> **Publication gate:** This notice describes categories of data that may be involved based on the public RingScout project description. It is not a verified inventory of production processing. Before publishing as the definitive privacy policy or submitting RingScout for directory review, the operator must replace the marked fields and confirm actual data flows, retention, processors and deletion procedures. This document is not legal advice.
+This notice describes RingScout's current design as inspected in the public source repository. It is not a claim that every production setting has been independently verified. The operator must keep this notice aligned with the deployed service and applicable Indian law.
 
 ## 1. Who operates RingScout
 
-RingScout is presented at https://github.com/manavaga/ringscout and its live service is hosted at https://ringscout-hom7ntreuq-uc.a.run.app/.
+RingScout is operated by **Manav Agarwal**, as an individual developer.
 
-**Operator / data controller:** [CONFIRM INDIVIDUAL LEGAL NAME OR REGISTERED ENTITY]  
-**Privacy contact:** [ADD MONITORED PRIVACY EMAIL]  
-**Support:** https://github.com/manavaga/ringscout/issues
+- **Privacy and data requests:** agarwalmanav91@gmail.com
+- **Support:** https://github.com/manavaga/ringscout/issues
+- **Project:** https://github.com/manavaga/ringscout
+- **Service:** https://ringscout-hom7ntreuq-uc.a.run.app/
 
-Do not submit passwords, access tokens, payment credentials or sensitive personal information through public GitHub issues.
+Do not send passwords, API keys, payment card details or unrelated sensitive information through public GitHub issues.
 
 ## 2. What RingScout does
 
-RingScout can search for businesses listed on Google Maps and place outbound voice calls to business telephone numbers in India. The voice agent may ask about current availability, waiting time, appointment slots, services, stock and quoted prices. Depending on the workflow, RingScout may return call summaries and audio proof.
+RingScout searches for public business listings in India and can place outbound calls to listed business telephone numbers. It asks about current availability, waiting times, appointment slots, stock, services and quoted prices. It may return call status, transcripts, structured answers and audio proof.
 
-RingScout provides information gathered during a call. It does not itself guarantee a reservation, appointment, purchase, price or service.
+RingScout provides information communicated during a call. It does not itself guarantee availability or complete a reservation, appointment, purchase or payment.
 
-## 3. Information that may be processed
+## 3. Information processed
 
-Depending on how you access RingScout and which workflow you request, the service may process:
+Depending on the workflow, RingScout may process:
 
-- **Request details:** search terms, category, city, locality, requested service, questions to ask and timing.
-- **Business details:** business name, public listing information, publicly listed telephone number and information communicated by the business.
-- **Call data:** call status, timestamps, duration, telephony metadata, IVR interactions, call audio, audio-derived text, summaries and extracted answers, where enabled.
-- **Technical and diagnostic data:** service logs, error details, request identifiers, IP or client metadata and security events, to the extent collected by the deployed infrastructure.
-- **Payment and entitlement data:** free-tier usage or payment-related references if a paid or metered workflow is enabled. RingScout should not store full card credentials; payment credentials are handled by the applicable payment provider where used.
+- **Request information:** search terms, city, locality, category, user question, caller name and requested service.
+- **Business information:** business name, address, public listing information and listed business phone number.
+- **Call information:** destination number, carrier call identifier, call status, timestamps, duration, keypad/IVR actions, transcript turns, extracted availability and price information.
+- **Call audio:** live PSTN audio from the business side and the AI voice side is buffered and assembled into a WAV file for audio proof.
+- **Technical information:** IP-derived rate-limit fingerprint, request path, HTTP method, status, latency, user-agent and diagnostic/error information.
+- **Payment and quota information:** usage counters and payment authorization/receipt metadata if a paid payment method is enabled.
 
-**Operator verification required:** confirm exactly which of these fields are stored, for how long, and which are processed transiently only.
+## 4. Where information is processed and stored
 
-## 4. Voice calls, AI and recordings
+### Application memory
 
-RingScout uses AI-assisted voice technology and telephony services to place calls to business numbers. The public project documentation describes Indian English and Hindi/Hinglish voice interactions and the return of playable call audio.
+The source currently keeps active and completed quest objects in an in-memory QuestManager dictionary. These objects can include the request, caller name, business telephone numbers, call transcripts, extracted answers and call metadata.
 
-The operator has stated that the voice agent identifies itself as an AI assistant calling on the user's behalf and discloses recording. The production call flow must be tested to ensure this disclosure is made consistently before recording begins. If a call recipient objects or declines, the call flow should respect that response and end or avoid recording as configured.
+The source does not show a database or durable object-storage write for these quest records. There is also no explicit time-to-live or automatic deletion routine for quest objects. They remain in the running process's memory until the process is restarted or the instance is otherwise replaced. This is not a guaranteed fixed retention period.
 
-Call audio can contain the voice and statements of a business employee or other person answering the listed number. Users must not republish or use recordings beyond their lawful purpose. Audio returned to a user may be accessible to that user and may be processed by service providers to operate the feature.
+### Audio proof
 
-**Operator verification required:** confirm the exact disclosure wording, whether recording is always enabled or conditional, whether transcripts are generated, where audio is stored, who can access it, retention period and deletion procedure.
+For live PSTN calls, the application records inbound and outbound audio frames during the call, assembles them into a WAV file and keeps the resulting clip in a bounded in-memory store. The store holds up to 64 clips and evicts older clips first when it reaches capacity. It has no configured time-based expiry in the inspected source. Clips are also lost when the process restarts.
 
-## 5. How information is used
+The audio endpoint returns a WAV file with Cache-Control: no-store. A signed audio URL can be used to retrieve a clip while it remains in memory.
 
-Information may be used to:
+### Operational and request logs
 
-- find relevant businesses and initiate the requested calls;
-- conduct voice conversations and extract answers;
-- return call status, reported availability, rates, summaries and audio where available;
+The application keeps a bounded in-memory request history (up to 4,000 HTTP records) and a bounded in-memory list of recent MCP tool-call summaries (up to 100). These records can include timestamps, request paths, HTTP methods, response status, latency, user-agent classification and a short summary of the requested task.
+
+The service also reads Cloud Run request logs from Google Cloud Logging for its operator analytics. The source queries a rolling window of up to 720 hours; this is an analytics query window, not a configured deletion schedule. Google Cloud's _Default log bucket retains logs for 30 days by default unless the project has configured a different retention period. The actual retention setting for RingScout's Google Cloud project has not yet been verified.
+
+The application derives a truncated SHA-256 fingerprint from the request IP address for rate limiting. This is pseudonymous information, not anonymous data.
+
+## 5. AI processing, telephony and service providers
+
+The inspected production configuration and repository identify these service providers:
+
+- **Google Cloud Run:** application hosting.
+- **Google Vertex AI / Gemini:** live voice interaction, speech transcription and extraction of call answers.
+- **Vobiz:** outbound Indian telephone calls and bidirectional call-media transport.
+- **Google Maps / Google business listing services:** discovery of businesses and their public listing details.
+
+The source also contains adapters for Plivo and Twilio, but the operator has confirmed that Vobiz is the intended active telephony provider for the current deployment. The operator should update this notice if the active provider changes.
+
+Call audio and conversation content are transmitted to Google Vertex AI/Gemini to provide the AI voice interaction and answer extraction. Vobiz processes the telephone call and associated call metadata/media. These providers process data under their own service terms and privacy documentation.
+
+## 6. AI identity and recording disclosure — launch blocker
+
+The source code was inspected on 25 November 2026. It currently instructs the voice agent to identify itself as the RingScout AI assistant only if the person answering explicitly asks who is calling. The initial greeting may instead use the caller name supplied in the request. The inspected prompt does not include a proactive recording disclosure.
+
+This does not match a policy promise that every call proactively identifies itself as AI and announces recording. RingScout must not be publicly launched with a claim that those disclosures always occur until the call flow is updated and tested. The operator should ensure that the recipient receives clear notice of the AI nature and recording before recording begins, and that the call respects objections or requests to stop.
+
+## 7. Public dashboard and audio-link access — launch blocker
+
+The inspected source includes public dashboard/analytics responses that currently contain recent call details, including transcript content and signed audio links. Phone numbers are masked in some public views, but transcript and audio details may still be exposed.
+
+The operator should restrict these responses to non-sensitive aggregate data, or require appropriate authorization before returning transcripts and audio. This exposure should be fixed and tested before the public privacy notice is treated as final.
+
+## 8. Purposes of processing
+
+Information is used to:
+- discover relevant businesses and place the requested call;
+- conduct AI-assisted voice conversations and produce transcripts and answers;
+- return call status, reported availability, prices, summaries and audio proof;
+- enforce quotas, rate limits and abuse-prevention controls;
 - operate, secure, debug and improve the service;
-- enforce usage limits, prevent abuse and administer billing where enabled;
-- respond to support requests and comply with applicable legal obligations.
+- administer payment flows if enabled;
+- respond to support requests and comply with legal obligations.
 
-RingScout should not use call audio or personal data for unrelated marketing without an appropriate legal basis and any required consent.
+## 9. Sharing and disclosure
 
-## 6. Service providers and disclosures
+Information is shared with the service providers listed above to operate the requested features. It may also be disclosed where required by law, to protect the service or users, or in connection with a lawful business transfer.
 
-The public repository describes deployment on Google Cloud, AI processing using Gemini, and telephony integrations that may include Vobiz, Plivo or Twilio. Google Maps listing information is used to discover businesses.
+RingScout does not sell personal data for advertising. The operator should not use call audio or personal data for unrelated marketing without an appropriate legal basis and any required consent.
 
-Depending on the deployed configuration, relevant data may be processed by:
-- cloud hosting and logging providers;
-- AI model providers;
-- telephony and voice infrastructure providers;
-- mapping or business listing providers;
-- payment providers, if paid workflows are enabled.
+## 10. Retention and deletion
 
-**Operator verification required:** publish the current production provider list, each provider's role, relevant data categories, processing locations and links to their privacy terms. Do not assume every integration named in the source repository is active in production.
+The source currently implements process-memory retention, not a fixed retention schedule, for quest records and audio clips:
 
-Information may also be disclosed where required by law, to protect users or the service, or in connection with a legitimate business transfer, subject to applicable law.
+- Quest records and transcripts: held in the running process's memory; no explicit TTL or user-facing deletion function was found in the inspected source.
+- WAV audio clips: in-memory, up to 64 clips, oldest-first eviction; no time-based TTL found.
+- In-memory HTTP request history: up to 4,000 records per process.
+- In-memory MCP tool-call summaries: up to 100 records per process.
+- Google Cloud request logs: stored under the project's Cloud Logging configuration. The default _Default bucket retention is 30 days, but the actual project setting and any custom log sinks have not been verified.
 
-## 7. Retention and deletion
+A process restart clears the application-memory stores, but it does not itself delete Cloud Logging entries or information held by third-party providers. The operator must verify Cloud Logging bucket settings and provider-side retention terms before making a fixed retention promise.
 
-**Retention periods are not stated here because they have not yet been verified.** Before publication, the operator must specify retention periods separately for:
-- call recordings and generated audio files;
-- transcripts and extracted call results;
-- request and application logs;
-- account, usage and entitlement records;
-- support correspondence and security logs.
+To request access, correction or deletion, email **agarwalmanav91@gmail.com** with the approximate request date/time, city and business name if known. Do not include passwords, payment credentials or unnecessary sensitive data. The operator will assess the request under applicable law and explain any technical or legal limitation. The current source does not implement automated self-service deletion.
 
-The operator must also confirm how a user or call recipient can request deletion, what information can be deleted, and what must be retained for security, billing or legal reasons.
+## 11. Security
 
-Privacy requests: **[ADD MONITORED PRIVACY EMAIL]**. Include enough information to locate the relevant request, but do not send payment credentials or unrelated sensitive details.
+The repository describes using Google Cloud Secret Manager for telephony and administrative credentials. The service uses passcodes, signed tokens and phone-number masking in selected views. These controls do not eliminate all risk. The public dashboard/audio exposure described above must be fixed before public launch.
 
-## 8. Security
+Do not post secrets, personal phone numbers or call recordings in public issue trackers. Report security concerns privately by emailing **agarwalmanav91@gmail.com** with the subject "RingScout Security".
 
-The project documentation describes the use of Google Cloud Secret Manager for telephony and administrative credentials. The operator applies reasonable technical and organizational measures appropriate to the service, but no internet-connected system can be guaranteed completely secure.
+## 12. International processing
 
-Do not send secrets or sensitive personal data through public issue trackers. Security vulnerability reports should follow [SECURITY.md](SECURITY.md).
+The service is intended for Indian business calls. Google Cloud and other service providers may process data in infrastructure regions outside India. The operator must verify the actual processing regions and applicable safeguards with the providers.
 
-## 9. International processing
+## 13. Children
 
-Users may access RingScout from different countries. Infrastructure and service providers may process data in locations outside the user's country. **The operator must confirm the actual production regions and applicable transfer safeguards before publication.**
+RingScout is not designed for children. Do not use the service on behalf of a child unless you are legally authorized to do so.
 
-## 10. Children
+## 14. Your rights
 
-RingScout is not designed for children and should not be used by anyone below the age required to enter a binding agreement in their jurisdiction without the involvement and authorization of a parent or legal guardian.
+Requests will be handled in accordance with applicable Indian law, including the Digital Personal Data Protection Act, 2023 and rules in force to the extent applicable. Depending on the law and circumstances, individuals may have rights to access information, request correction or erasure, raise grievances and nominate another person to exercise rights.
 
-## 11. Your choices and rights
+Contact **agarwalmanav91@gmail.com** for privacy requests or grievances. The operator may need to verify identity and may retain information where legally required.
 
-Depending on your location and applicable law, you may have rights to request access, correction, deletion, restriction or objection to certain processing. To make a request, contact **[ADD MONITORED PRIVACY EMAIL]**. The operator may need to verify the requester's identity and may be unable to fulfill requests that conflict with legal obligations or the rights of others.
+## 15. Changes
 
-## 12. Changes
+This notice may be updated when RingScout's features, service providers, storage practices or legal requirements change. The latest version will be published at this URL with an updated date.
 
-This notice may be updated as RingScout's features, infrastructure or legal requirements change. The "Last updated" date will be changed when a revised notice is published.
+## 16. Contact
 
-## 13. Contact
-
-**Operator:** [CONFIRM INDIVIDUAL LEGAL NAME OR REGISTERED ENTITY]  
-**Privacy email:** [ADD MONITORED PRIVACY EMAIL]  
-**Support:** https://github.com/manavaga/ringscout/issues
+**Operator:** Manav Agarwal  
+**Email:** agarwalmanav91@gmail.com  
+**Support:** https://github.com/manavaga/ringscout/issues  
+**Repository:** https://github.com/manavaga/ringscout
