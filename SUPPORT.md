@@ -34,7 +34,7 @@ Try downloading the audio file and opening it in a standard WAV-compatible playe
 
 ## Privacy and data requests
 
-For access, correction, deletion or privacy questions, contact: **[ADD MONITORED PRIVACY EMAIL]**.
+For access, correction, deletion or privacy questions, contact: **agarwalmanav91@gmail.com**.
 
 Until a dedicated privacy contact is published, you may open a GitHub issue asking for the private contact route. Do not include personal or sensitive data in the issue itself.
 
