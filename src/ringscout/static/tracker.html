@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RingScout Endpoint &amp; Request Tracker — Live MCP, A2A &amp; Crawler Telemetry</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #090c10;
+      --surface: #11161d;
+      --surface-2: #161d26;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.16);
+      --ink: #f1f5f9;
+      --ink-muted: #94a3b8;
+      --ink-subtle: #64748b;
+      --accent: #10b981;
+      --accent-soft: rgba(16, 185, 129, 0.12);
+      --cyan: #38bdf8;
+      --cyan-soft: rgba(56, 189, 248, 0.12);
+      --amber: #f59e0b;
+      --amber-soft: rgba(245, 158, 11, 0.12);
+      --indigo: #818cf8;
+      --indigo-soft: rgba(129, 140, 248, 0.14);
+      --danger: #f87171;
+      --mono: 'JetBrains Mono', ui-monospace, monospace;
+      --sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      -webkit-font-smoothing: antialiased;
+    }
+    .topbar {
+      border-bottom: 1px solid var(--border);
+      background: rgba(9, 12, 16, 0.9);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 30;
+    }
+    .topbar-inner {
+      max-width: 1220px;
+      margin: 0 auto;
+      height: 58px;
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--ink);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .brand-mark {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      background: var(--surface-2);
+      border: 1px solid var(--border-strong);
+      display: grid;
+      place-items: center;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--accent);
+    }
+    .nav-links { display: flex; gap: 6px; flex-wrap: wrap; }
+    .nav-link {
+      text-decoration: none;
+      color: var(--ink-muted);
+      font-size: 0.84rem;
+      font-weight: 500;
+      padding: 6px 11px;
+      border-radius: 8px;
+    }
+    .nav-link:hover, .nav-link.active {
+      color: var(--ink);
+      background: var(--surface);
+    }
+
+    .wrap {
+      max-width: 1220px;
+      margin: 0 auto;
+      padding: 28px 20px 80px;
+    }
+    .head-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .head-row h1 {
+      margin: 0;
+      font-size: 1.5rem;
+      letter-spacing: -0.03em;
+    }
+    .meta-pill {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--ink-muted);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 5px 10px;
+      border-radius: 999px;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 15px 16px;
+    }
+    .kpi-label {
+      font-size: 0.74rem;
+      color: var(--ink-muted);
+      margin-bottom: 6px;
+    }
+    .kpi-val {
+      font-family: var(--mono);
+      font-size: 1.55rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .kpi-sub {
+      margin-top: 5px;
+      font-size: 0.72rem;
+      color: var(--ink-subtle);
+      font-family: var(--mono);
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      margin-bottom: 18px;
+    }
+    .panel-head {
+      padding: 13px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .panel-head h2 {
+      margin: 0;
+      font-size: 0.92rem;
+      font-weight: 600;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .chip {
+      background: var(--bg);
+      color: var(--ink-muted);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 0.74rem;
+      cursor: pointer;
+    }
+    .chip.active {
+      background: var(--ink);
+      color: var(--bg);
+      border-color: var(--ink);
+      font-weight: 600;
+    }
+    .search-box {
+      background: var(--bg);
+      color: var(--ink);
+      border: 1px solid var(--border-strong);
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      min-width: 190px;
+    }
+
+    .chart-bars {
+      display: grid;
+      grid-template-columns: repeat(24, 1fr);
+      gap: 5px;
+      height: 86px;
+      align-items: end;
+      padding: 16px 18px 10px;
+    }
+    .bar-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      height: 100%;
+      justify-content: flex-end;
+    }
+    .bar-fill {
+      width: 100%;
+      min-height: 3px;
+      border-radius: 3px 3px 0 0;
+      background: linear-gradient(180deg, var(--cyan), var(--accent));
+      transition: height 0.25s ease;
+    }
+    .bar-lbl {
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      color: var(--ink-subtle);
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1.85fr 1fr;
+      gap: 18px;
+      align-items: start;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    th {
+      text-align: left;
+      padding: 10px 14px;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--ink-subtle);
+      border-bottom: 1px solid var(--border);
+      font-family: var(--mono);
+    }
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: 0; }
+    .method-badge {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-right: 6px;
+    }
+    .m-POST { background: var(--indigo-soft); color: var(--indigo); }
+    .m-GET { background: var(--accent-soft); color: var(--accent); }
+    .m-DELETE, .m-HEAD, .m-OPTIONS { background: var(--amber-soft); color: var(--amber); }
+
+    .cat-tag {
+      font-family: var(--mono);
+      font-size: 0.67rem;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: var(--surface-2);
+      color: var(--ink-muted);
+      border: 1px solid var(--border);
+    }
+    .share-bar {
+      width: 72px;
+      height: 5px;
+      background: var(--surface-2);
+      border-radius: 999px;
+      overflow: hidden;
+      display: inline-block;
+      vertical-align: middle;
+      margin-left: 6px;
+    }
+    .share-fill {
+      height: 100%;
+      background: var(--accent);
+    }
+
+    .list-row {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 0.8rem;
+    }
+    .list-row:last-child { border-bottom: 0; }
+    .mono-num { font-family: var(--mono); font-weight: 600; color: var(--cyan); }
+
+    @media (max-width: 980px) {
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .two-col { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a href="/" class="brand">
+        <span class="brand-mark">RS</span>
+        <span>RingScout Endpoint Tracker</span>
+      </a>
+      <nav class="nav-links">
+        <a href="/" class="nav-link">Call App</a>
+        <a href="/dashboard" class="nav-link">Live Calls</a>
+        <a href="/tracker" class="nav-link active">Endpoint Tracker</a>
+        <a href="/developers" class="nav-link">MCP &amp; Agents</a>
+        <a href="/admin" class="nav-link">Admin</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="head-row">
+      <h1>Incoming Requests &amp; Endpoint Hit Tracker</h1>
+      <div class="meta-pill" id="sourceStatus">Loading Cloud Run &amp; live telemetry…</div>
+    </div>
+
+    <section class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">Total Requests Received</div>
+        <div class="kpi-val" id="kTotal">0</div>
+        <div class="kpi-sub" id="kUnique">0 unique endpoints</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">MCP Protocol Hits</div>
+        <div class="kpi-val" id="kMcp">0</div>
+        <div class="kpi-sub">/mcp · /sse · /messages · /ping</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Discovery &amp; .well-known</div>
+        <div class="kpi-val" id="kDisc">0</div>
+        <div class="kpi-sub">Server Card · AI Catalog · OpenAPI</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Directories &amp; AI Bots</div>
+        <div class="kpi-val" id="kBots">0</div>
+        <div class="kpi-sub" id="kGeoSub">0 GEO /llms.txt &amp; /robots.txt</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">2xx Health &amp; Latency</div>
+        <div class="kpi-val" id="kHealth">100%</div>
+        <div class="kpi-sub" id="kLatSub">p50 0ms · p95 0ms</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>24-Hour Request Volume (UTC)</h2>
+        <span class="meta-pill" id="windowLabel">7-day persistent Cloud Logging + live stream</span>
+      </div>
+      <div class="chart-bars" id="hourlyBars"></div>
+    </section>
+
+    <div class="two-col">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Endpoints Being Hit (Ranked by Volume)</h2>
+          <div class="controls">
+            <button class="chip active" data-cat="all">All</button>
+            <button class="chip" data-cat="mcp_protocol">MCP</button>
+            <button class="chip" data-cat="discovery_well_known">.well-known</button>
+            <button class="chip" data-cat="a2a_protocol">A2A</button>
+            <button class="chip" data-cat="agentic_payments">x402 / Pay</button>
+            <button class="chip" data-cat="geo_ai_search">GEO</button>
+            <input id="epSearch" class="search-box" placeholder="Filter path (e.g. /mcp)..." />
+          </div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Endpoint</th>
+                <th>Category</th>
+                <th>Hits</th>
+                <th>2xx / Err</th>
+                <th>Avg ms</th>
+                <th>Last Hit (UTC)</th>
+              </tr>
+            </thead>
+            <tbody id="endpointsBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <div>
+        <section class="panel">
+          <div class="panel-head">
+            <h2>External Agents, Scanners &amp; Bots</h2>
+          </div>
+          <div id="callersList"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Live MCP JSON-RPC Methods</h2>
+          </div>
+          <div id="mcpMethodsList"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Recent Request Stream</h2>
+          </div>
+          <div id="recentFeed"></div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    let latestData = null;
+    let activeCat = 'all';
+    let searchTerm = '';
+
+    const CAT_LABELS = {
+      mcp_protocol: 'MCP Protocol',
+      discovery_well_known: 'Discovery',
+      a2a_protocol: 'Google A2A',
+      agentic_payments: 'x402 / MPP',
+      geo_ai_search: 'GEO / Search',
+      web_and_app_api: 'Web & App',
+      other_scanner_probes: 'Scanner Probe'
+    };
+
+    function render(data) {
+      const s = data.summary || {};
+      document.getElementById('kTotal').textContent = (s.total_requests || 0).toLocaleString();
+      document.getElementById('kUnique').textContent = `${s.unique_endpoints_hit || 0} unique endpoints hit`;
+      document.getElementById('kMcp').textContent = (s.mcp_protocol_hits || 0).toLocaleString();
+      document.getElementById('kDisc').textContent = (s.discovery_manifest_hits || 0).toLocaleString();
+      document.getElementById('kBots').textContent = (s.directory_and_ai_bot_hits || 0).toLocaleString();
+      document.getElementById('kGeoSub').textContent = `${s.geo_search_hits || 0} /llms.txt & /robots.txt · ${s.a2a_and_payment_hits || 0} A2A/x402`;
+      document.getElementById('kHealth').textContent = `${s.success_2xx_pct ?? 100}%`;
+      document.getElementById('kLatSub').textContent = `p50 ${s.median_latency_ms || 0}ms · p95 ${s.p95_latency_ms || 0}ms`;
+      document.getElementById('sourceStatus').textContent =
+        `${data.source_mode === 'cloud_logging_plus_live_stream' ? 'Persistent Cloud Logging + Live' : 'Live Stream'} · Updated ${new Date().toLocaleTimeString()}`;
+
+      const barsEl = document.getElementById('hourlyBars');
+      const series = data.hourly_volume_24h || [];
+      const maxH = Math.max(1, ...series.map((b) => b.requests || 0));
+      barsEl.innerHTML = series.map((b, idx) => {
+        const pct = Math.max(4, Math.round(((b.requests || 0) / maxH) * 100));
+        const hh = (b.hour_utc || '').slice(11, 13);
+        const showLbl = idx % 3 === 0 || idx === series.length - 1;
+        return `<div class="bar-col" title="${b.hour_utc}: ${b.requests} requests">
+          <div class="bar-fill" style="height:${pct}%"></div>
+          <span class="bar-lbl">${showLbl ? hh + 'h' : ''}</span>
+        </div>`;
+      }).join('');
+
+      const rows = (data.endpoints || []).filter((r) => {
+        if (activeCat !== 'all' && r.category !== activeCat) return false;
+        if (searchTerm && !r.endpoint.toLowerCase().includes(searchTerm)) return false;
+        return true;
+      });
+
+      const tbody = document.getElementById('endpointsBody');
+      tbody.innerHTML = rows.map((r) => `
+        <tr>
+          <td>
+            <span class="method-badge m-${r.method}">${r.method}</span>
+            <code style="font-family:var(--mono);font-size:0.77rem;">${r.path}</code>
+          </td>
+          <td><span class="cat-tag">${CAT_LABELS[r.category] || r.category}</span></td>
+          <td style="font-family:var(--mono);font-weight:600;">
+            ${r.hits.toLocaleString()}
+            <span class="share-bar"><span class="share-fill" style="width:${Math.min(100, r.share_pct)}%"></span></span>
+          </td>
+          <td style="font-family:var(--mono);font-size:0.74rem;color:var(--ink-muted);">
+            <span style="color:var(--accent)">${r.ok_2xx}</span> / <span style="color:${r.err_4xx_5xx ? 'var(--danger)' : 'var(--ink-subtle)'}">${r.err_4xx_5xx}</span>
+          </td>
+          <td style="font-family:var(--mono);font-size:0.74rem;color:var(--ink-muted);">${r.avg_latency_ms}ms</td>
+          <td style="font-family:var(--mono);font-size:0.71rem;color:var(--ink-subtle);">${(r.last_seen || '').replace('T', ' ').replace('Z', '')}</td>
+        </tr>
+      `).join('') || '<tr><td colspan="6" style="color:var(--ink-subtle);">No matching endpoints in filter.</td></tr>';
+
+      const callersEl = document.getElementById('callersList');
+      callersEl.innerHTML = (data.top_callers || []).slice(0, 12).map((c) => `
+        <div class="list-row">
+          <span>${c.agent}</span>
+          <span class="mono-num">${c.hits.toLocaleString()}</span>
+        </div>
+      `).join('') || '<div class="list-row" style="color:var(--ink-subtle);">Waiting for requests…</div>';
+
+      const mcpEl = document.getElementById('mcpMethodsList');
+      const mcpEntries = Object.entries(data.mcp_jsonrpc_methods || {});
+      mcpEl.innerHTML = mcpEntries.length
+        ? mcpEntries.map(([m, cnt]) => `
+            <div class="list-row">
+              <code style="font-family:var(--mono);font-size:0.76rem;">${m}</code>
+              <span class="mono-num">${cnt.toLocaleString()}</span>
+            </div>
+          `).join('')
+        : '<div class="list-row" style="color:var(--ink-subtle);">Live revision RPC counter ready (increments on next POST /mcp).</div>';
+
+      const recentEl = document.getElementById('recentFeed');
+      recentEl.innerHTML = (data.recent_requests || []).slice(0, 12).map((ev) => `
+        <div class="list-row" style="flex-direction:column;align-items:flex-start;gap:3px;">
+          <div style="width:100%;display:flex;justify-content:space-between;">
+            <span><span class="method-badge m-${ev.method}">${ev.method}</span><code style="font-family:var(--mono);font-size:0.75rem;">${ev.path}</code></span>
+            <span style="font-family:var(--mono);font-size:0.72rem;color:${ev.status < 300 ? 'var(--accent)' : 'var(--amber)'};">HTTP ${ev.status} · ${ev.latency_ms}ms</span>
+          </div>
+          <div style="font-family:var(--mono);font-size:0.69rem;color:var(--ink-subtle);">${ev.agent} · ${ev.ts}</div>
+        </div>
+      `).join('');
+    }
+
+    async function refreshTracker() {
+      try {
+        const res = await fetch('/api/tracker/endpoints');
+        if (res.ok) {
+          latestData = await res.json();
+          render(latestData);
+        }
+      } catch (err) {
+        console.warn('Tracker fetch failed:', err);
+      }
+    }
+
+    document.querySelectorAll('.chip[data-cat]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.chip[data-cat]').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        activeCat = btn.dataset.cat;
+        if (latestData) render(latestData);
+      });
+    });
+
+    document.getElementById('epSearch').addEventListener('input', (e) => {
+      searchTerm = (e.target.value || '').trim().toLowerCase();
+      if (latestData) render(latestData);
+    });
+
+    refreshTracker();
+    setInterval(refreshTracker, 5000);
+  </script>
+</body>
+</html>

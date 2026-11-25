@@ -85,6 +85,7 @@ from ringscout.models import (
     ShopCallState,
     VocalTone,
 )
+from ringscout.request_tracker import EndpointRequestTracker
 from ringscout.secrets_manager import get_secret
 from ringscout.stripe_protocol import (
     create_signed_demo_stripe_mpp_credential,
@@ -790,8 +791,10 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
         require_provenance=require_provenance,
     )
     analytics = TrafficAnalyticsTracker()
+    endpoint_tracker = EndpointRequestTracker(project_id=GCP_PROJECT_ID, service_name="ringscout")
     app.state.manager = manager
     app.state.analytics = analytics
+    app.state.endpoint_tracker = endpoint_tracker
 
     _RFC8288_AGENT_LINKS = (
         '</.well-known/ai-catalog.json>; rel="ai-catalog"; type="application/ai-catalog+json", '
@@ -804,11 +807,21 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
 
     @app.middleware("http")
     async def track_organic_and_ai_traffic(request: Request, call_next: Any) -> Response:
+        t0 = time.perf_counter()
         response: Response = await call_next(request)
-        if request.url.path in ("/", "/developers", "/dashboard", "/ping", "/api/health"):
+        elapsed_ms = (time.perf_counter() - t0) * 1000.0
+        if request.url.path in ("/", "/developers", "/dashboard", "/tracker", "/ping", "/api/health"):
             response.headers.setdefault("Link", _RFC8288_AGENT_LINKS)
         try:
             analytics.record_request(request, response.status_code)
+            if request.url.path != "/api/tracker/endpoints":
+                endpoint_tracker.record_http_hit(
+                    method=request.method,
+                    raw_path=request.url.path,
+                    status_code=response.status_code,
+                    user_agent=request.headers.get("user-agent") or "",
+                    latency_ms=elapsed_ms,
+                )
         except Exception:
             pass
         return response
@@ -1586,6 +1599,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
 
     @app.get("/.well-known/ai-catalog.json")
     @app.get("/.well-known/ai-catalog")
+    @app.get("/.well-known/ard.json")
     async def ai_catalog_well_known(request: Request) -> Response:
         base_url = _derive_public_base_url(request, manager.pstn_adapter)
         catalog = build_ai_catalog_manifest(base_url)
@@ -1795,6 +1809,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
         return Response(status_code=204)
 
     @app.get("/mcp")
+    @app.get("/mcp/", include_in_schema=False)
     async def mcp_info(request: Request) -> Response:
         accept = (request.headers.get("accept") or "").lower()
         if "text/event-stream" in accept:
@@ -1823,6 +1838,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
             rpc_body = await request.json()
         except Exception as exc:
             raise HTTPException(status_code=400, detail="Invalid JSON-RPC payload") from exc
+        endpoint_tracker.record_mcp_rpc(rpc_body)
 
         base_url = _derive_public_base_url(request, manager.pstn_adapter)
         provided_pass = request.headers.get("x-ringscout-passcode") or request.query_params.get(
@@ -1858,6 +1874,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
         return rpc_resp, mcp_headers
 
     @app.post("/mcp")
+    @app.post("/mcp/", include_in_schema=False)
     async def mcp_streamable_http(request: Request) -> Response:
         rpc_resp, mcp_headers = await _dispatch_mcp_request(request)
         if rpc_resp is None:
@@ -2078,9 +2095,19 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
     async def consumer_website_page() -> FileResponse:
         return FileResponse(STATIC_DIR / "index.html")
 
+    @app.get("/api/tracker/endpoints")
+    async def get_endpoint_request_tracker(window_hours: int = 168) -> dict[str, Any]:
+        """Return persistent Cloud-Logging-merged + real-time endpoint hit counts, callers, and RPC stats."""
+        safe_hours = max(1, min(int(window_hours), 720))
+        return await endpoint_tracker.build_report(window_hours=safe_hours)
+
     @app.get("/dashboard", include_in_schema=False)
     async def live_calls_dashboard_page() -> FileResponse:
         return FileResponse(STATIC_DIR / "dashboard.html")
+
+    @app.get("/tracker", include_in_schema=False)
+    async def endpoint_tracker_page() -> FileResponse:
+        return FileResponse(STATIC_DIR / "tracker.html")
 
     @app.get("/developers", include_in_schema=False)
     async def developers_hub_page() -> FileResponse:

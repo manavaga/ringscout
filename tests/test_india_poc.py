@@ -2261,10 +2261,21 @@ def test_mcp_full_discovery_sep2127_sse_batch_prompts_resources_and_registry_sch
     assert sse_dual_post.json()["result"] == {}
 
     assert client.get("/.well-known/ai-catalog").status_code == 200
+    assert client.get("/.well-known/ard.json").status_code == 200
     assert client.get("/.well-known/mcp").status_code == 200
+    assert client.post("/mcp/", json={"jsonrpc": "2.0", "id": 41, "method": "ping"}).json()["result"] == {}
     assert client.get("/.well-known/agents.json").json()["flows"][0]["id"] == "verify_live_availability_and_inr_rates"
     assert client.get("/.well-known/ai-plugin.json").json()["name_for_model"] == "ringscout_google_maps_voice"
     assert "Contact:" in client.get("/.well-known/security.txt").text
+
+    # 6. Endpoint & Request Tracker UI + JSON API (/tracker & /api/tracker/endpoints)
+    assert client.get("/tracker").status_code == 200
+    trk = client.get("/api/tracker/endpoints", headers={"User-Agent": "SentinelOracle/0.1"}).json()
+    assert trk["summary"]["total_requests"] >= 10
+    assert trk["mcp_jsonrpc_methods"]["ping"] >= 2
+    ep_names = {e["endpoint"] for e in trk["endpoints"]}
+    assert "POST /mcp" in ep_names
+
 
 
 

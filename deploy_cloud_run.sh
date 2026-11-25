@@ -23,6 +23,12 @@ fi
 echo "==> Syncing telephony & admin secrets into Google Cloud Secret Manager..."
 GCP_PROJECT_ID="${PROJECT_ID}" ./scripts/setup_gcp_secrets.sh
 
+PROJECT_NUM="$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')"
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --member="serviceAccount:${PROJECT_NUM}-compute@developer.gserviceaccount.com" \
+  --role="roles/logging.viewer" \
+  --quiet >/dev/null 2>&1 || true
+
 SECRETS_MOUNT="VOBIZ_AUTH_ID=ringscout-vobiz-auth-id:latest,VOBIZ_AUTH_TOKEN=ringscout-vobiz-auth-token:latest,VOBIZ_FROM_NUMBER=ringscout-vobiz-from-number:latest,RINGSCOUT_ADMIN_PASSCODE=ringscout-admin-passcode:latest,RINGSCOUT_HMAC_SECRET=ringscout-hmac-secret:latest"
 
 ENV_VARS="GCP_PROJECT_ID=${PROJECT_ID},GCP_LOCATION=${REGION},RINGSCOUT_USE_SECRET_MANAGER=1,RINGSCOUT_PUBLIC_CONSUMER_ACCESS=1"

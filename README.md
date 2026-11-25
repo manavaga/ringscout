@@ -1,6 +1,7 @@
 # RingScout — Parallel AI Voice Scout for Google Maps (`MCP` · `Google A2A` · `OpenAPI` · `x402` · `Stripe MPP`)
 
 [![Official MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.manavaga%2Fringscout-10b981?style=flat-square)](https://registry.modelcontextprotocol.io/v0/servers?search=ringscout)
+[![manavaga/ringscout MCP server](https://glama.ai/mcp/servers/manavaga/ringscout/badges/score.svg)](https://glama.ai/mcp/servers/manavaga/ringscout)
 [![MCP Protocol](https://img.shields.io/badge/MCP-2025--06--18_Streamable_HTTP_%2B_SSE-6366f1?style=flat-square)](https://ringscout-hom7ntreuq-uc.a.run.app/mcp)
 [![Google A2A](https://img.shields.io/badge/Google_A2A-v1.0_Agent_Card-38bdf8?style=flat-square)](https://ringscout-hom7ntreuq-uc.a.run.app/.well-known/agent-card.json)
 [![SEP-2127](https://img.shields.io/badge/SEP--2127-Server_Card_%2B_AI_Catalog-f59e0b?style=flat-square)](https://ringscout-hom7ntreuq-uc.a.run.app/.well-known/mcp/server-card.json)
