@@ -1576,6 +1576,15 @@ class LiveIndiaPstnAdapter:
             return call_sid
         except httpx.HTTPStatusError as exc:
             detail = exc.response.text[:180] if exc.response is not None else str(exc)
+            carrier_msg = "check caller ID / wallet balance / webhook URL."
+            if exc.response is not None:
+                try:
+                    err_j = exc.response.json()
+                    raw_e = str(err_j.get("error") or err_j.get("message") or "").strip()
+                    if raw_e:
+                        carrier_msg = raw_e[:140]
+                except Exception:
+                    pass
             logger.warning(
                 "PSTN call via %s failed for %s (%s): %s",
                 prov,
@@ -1588,7 +1597,7 @@ class LiveIndiaPstnAdapter:
             call.transcript.append(
                 TranscriptTurn(
                     speaker="system",
-                    text=f"{prov.upper()} HTTP {exc.response.status_code}: check caller ID / balance / webhook URL.",
+                    text=f"{prov.upper()} HTTP {exc.response.status_code}: {carrier_msg}",
                     timestamp_sec=0.0,
                 )
             )
