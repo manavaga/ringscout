@@ -30,7 +30,11 @@ No. Answers are reported as communicated during the call and may change. Confirm
 
 ## Does RingScout provide call audio?
 
-The project documents return of playable WAV audio proof for supported calls. Audio availability depends on the call and configuration. See the [Privacy Notice](PRIVACY.md) for recording and data-handling information.
+Yes. For live PSTN calls, the server records inbound and outbound audio into a WAV proof clip. The current source keeps up to 64 clips in process memory and evicts the oldest clips first; there is no time-based expiry configured in the inspected code. See the [Privacy Notice](PRIVACY.md) for details.
+
+## Does the voice agent disclose that it is AI and that the call is recorded?
+
+The current source does not proactively disclose either fact in its opening greeting. It only instructs the agent to identify itself as RingScout AI if the recipient asks who is calling. This must be corrected and tested before public launch.
 
 ## What if nobody answers?
 
