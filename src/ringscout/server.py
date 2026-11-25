@@ -2225,6 +2225,92 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
     async def developers_hub_page() -> FileResponse:
         return FileResponse(STATIC_DIR / "developers.html")
 
+    @app.api_route("/demo.mp4", methods=["GET", "HEAD"], include_in_schema=False)
+    async def inline_demo_video_mp4() -> FileResponse:
+        """Serve the 57s 1080p MP4 with `Content-Disposition: inline` + HTTP 206 byte-range streaming (never forces download)."""
+        mp4_path = STATIC_DIR / "demo.mp4"
+        if not mp4_path.is_file():
+            raise HTTPException(status_code=404, detail="Demo video not bundled")
+        return FileResponse(
+            mp4_path,
+            media_type="video/mp4",
+            content_disposition_type="inline",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
+    @app.api_route("/demo_poster.jpg", methods=["GET", "HEAD"], include_in_schema=False)
+    async def inline_demo_poster_jpg() -> FileResponse:
+        poster_path = STATIC_DIR / "demo_poster.jpg"
+        if not poster_path.is_file():
+            raise HTTPException(status_code=404, detail="Demo poster not bundled")
+        return FileResponse(
+            poster_path,
+            media_type="image/jpeg",
+            content_disposition_type="inline",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
+    @app.get("/demo", include_in_schema=False)
+    async def inline_demo_watch_page(request: Request) -> HTMLResponse:
+        """Instant inline 1080p video watch page with OpenGraph `og:video` preview tags for Google Chat, WhatsApp & Slack."""
+        base_url = _derive_public_base_url(request, manager.pstn_adapter).rstrip("/")
+        html = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RingScout — 57s Live Demo (Real Restaurant Calls)</title>
+  <meta name="description" content="Watch RingScout dial open restaurants in parallel, navigate IVR menus, speak with real hosts, and return verified answers (₹0.32/call)." />
+  <meta property="og:type" content="video.other" />
+  <meta property="og:title" content="RingScout — Real-time local voice checks (57s Live Demo)" />
+  <meta property="og:description" content="Real live +91 calls to Hakkasan &amp; CinCin + MCP / Google A2A agentic commerce flow." />
+  <meta property="og:url" content="{base_url}/demo" />
+  <meta property="og:image" content="{base_url}/demo_poster.jpg" />
+  <meta property="og:video" content="{base_url}/demo.mp4" />
+  <meta property="og:video:secure_url" content="{base_url}/demo.mp4" />
+  <meta property="og:video:type" content="video/mp4" />
+  <meta property="og:video:width" content="1920" />
+  <meta property="og:video:height" content="1080" />
+  <meta name="twitter:card" content="player" />
+  <meta name="twitter:image" content="{base_url}/demo_poster.jpg" />
+  <style>
+    * {{ box-sizing:border-box; margin:0; padding:0; }}
+    body {{ background:#090c10; color:#f8fafc; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px 16px; }}
+    .shell {{ width:100%; max-width:980px; }}
+    .hdr {{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:14px; }}
+    h1 {{ font-size:1.15rem; font-weight:700; }}
+    .links {{ display:flex; gap:8px; flex-wrap:wrap; }}
+    a.btn {{ text-decoration:none; font-size:0.84rem; font-weight:600; padding:8px 14px; border-radius:8px; background:#161d26; color:#f1f5f9; border:1px solid rgba(255,255,255,0.14); }}
+    a.btn-primary {{ background:#10b981; color:#04130d; border-color:#10b981; font-weight:700; }}
+    .frame {{ border-radius:16px; overflow:hidden; border:1px solid rgba(255,255,255,0.12); background:#000; box-shadow:0 24px 60px rgba(0,0,0,0.55); }}
+    video {{ width:100%; display:block; aspect-ratio:16/9; background:#000; }}
+    .sub {{ margin-top:12px; font-size:0.84rem; color:#94a3b8; display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; }}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="hdr">
+      <h1>RingScout — Real-time local voice checks (57s Live Demo)</h1>
+      <div class="links">
+        <a class="btn btn-primary" href="/">Try Live App →</a>
+        <a class="btn" href="/developers">MCP &amp; Agent Card</a>
+        <a class="btn" href="https://github.com/manavaga/ringscout" target="_blank" rel="noopener">★ GitHub</a>
+      </div>
+    </div>
+    <div class="frame">
+      <video controls autoplay playsinline preload="metadata" poster="/demo_poster.jpg">
+        <source src="/demo.mp4" type="video/mp4" />
+      </video>
+    </div>
+    <div class="sub">
+      <span>1080p · Includes 2 uncut live +91 restaurant calls (Hakkasan &amp; CinCin)</span>
+      <span>Tap speaker icon if your browser muted autoplay</span>
+    </div>
+  </div>
+</body>
+</html>"""
+        return HTMLResponse(content=html)
+
     @app.get("/admin", include_in_schema=False)
     async def admin_operator_page() -> FileResponse:
         return FileResponse(STATIC_DIR / "admin.html")
