@@ -2487,6 +2487,102 @@ def test_a2a_and_mcp_auto_mode_dials_real_live_pstn_never_silent_simulation(
         update_runtime_payment_config(gate_mode="off", free_daily_calls_per_client=5)
 
 
+def test_github_seo_star_gate_and_custom_gpt_privacy_openapi_schema(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify GitHub bidirectional SEO, /privacy + strict ChatGPT Actions OpenAPI 3.1, and Star-Gate modes."""
+    from ringscout.models import PlaceCategory
+    from ringscout.stripe_protocol import _GITHUB_STAR_CACHE, update_runtime_payment_config
+    import ringscout.stripe_protocol as sp_mod
+
+    monkeypatch.setenv("RINGSCOUT_PUBLIC_CONSUMER_ACCESS", "1")
+    monkeypatch.setenv("RINGSCOUT_ADMIN_PASSCODE", "admin-vault-999")
+    monkeypatch.setenv("RINGSCOUT_PAYMENT_GATE_MODE", "off")
+
+    async def fake_discover(req: DiscoverRequest) -> DiscoverResponse:
+        return DiscoverResponse(
+            query="restaurants open now",
+            place_category=PlaceCategory.RESTAURANT,
+            city="Mumbai",
+            locality="Bandra West",
+            source="vertex_google_maps_grounding",
+            shops=[
+                IndianShopTarget(
+                    shop_id="shop_1",
+                    name="CinCin BKC",
+                    phone_e164="+918355870000",
+                    phone_display="+91 83558 70000",
+                    address="BKC, Mumbai 400051",
+                    locality="Bandra Kurla Complex",
+                    city="Mumbai",
+                    open_status="OPEN NOW",
+                    rating=4.6,
+                )
+            ],
+        )
+
+    async def fake_verify_star(username: str | None) -> bool:
+        return (username or "").strip().lstrip("@").lower() == "verifiedfan"
+
+    monkeypatch.setattr(a2a_gateway, "discover_indian_shops", fake_discover)
+    monkeypatch.setattr(a2a_gateway, "verify_github_stargazer", fake_verify_star)
+    monkeypatch.setattr(sp_mod, "verify_github_stargazer", fake_verify_star)
+    _GITHUB_STAR_CACHE.clear()
+
+    app = create_app(synthesize_audio=False, require_provenance=True)
+    client = TestClient(app)
+
+    try:
+        # 1. Bidirectional GitHub SEO + /privacy + strict ChatGPT Actions OpenAPI 3.1
+        home = client.get("/")
+        assert 'rel="vcs-git"' in home.headers.get("link", "")
+        assert '"codeRepository": "https://github.com/manavaga/ringscout"' in home.text
+        assert "Star on GitHub" in home.text
+
+        priv = client.get("/privacy")
+        assert priv.status_code == 200
+        assert "github.com/manavaga/ringscout" in priv.text
+
+        oas = client.get("/openapi-actions.json").json()
+        assert oas["externalDocs"]["url"] == "https://github.com/manavaga/ringscout"
+        resp200_props = oas["paths"]["/api/v1/scout"]["post"]["responses"]["200"]["content"]["application/json"]["schema"]["properties"]
+        assert "ranked_quotes" in resp200_props and "is_live_pstn" in resp200_props
+
+        # 2. Star-Gate mode 'after_first_call': Call #1 succeeds free; Call #2 requires GitHub star!
+        upd = client.post(
+            "/api/admin/payment-config",
+            headers={"X-RingScout-Passcode": "admin-vault-999"},
+            json={"star_gate_mode": "after_first_call", "free_daily_calls_per_client": 5},
+        )
+        assert upd.status_code == 200
+        assert upd.json()["star_gate_mode"] == "after_first_call"
+
+        c1 = client.post(
+            "/api/v1/scout",
+            headers={"X-Forwarded-For": "203.0.113.199"},
+            json={"place_category": "restaurant", "item_question": "Table tonight"},
+        )
+        assert c1.status_code == 200
+
+        c2_no_star = client.post(
+            "/api/v1/scout",
+            headers={"X-Forwarded-For": "203.0.113.199"},
+            json={"place_category": "restaurant", "item_question": "Table tonight", "github_username": "notstarred"},
+        )
+        assert c2_no_star.status_code == 402
+        assert "Star https://github.com/manavaga/ringscout" in c2_no_star.json()["error"]
+
+        c2_with_star = client.post(
+            "/api/v1/scout",
+            headers={"X-Forwarded-For": "203.0.113.199"},
+            json={"place_category": "restaurant", "item_question": "Table tonight", "github_username": "@verifiedfan"},
+        )
+        assert c2_with_star.status_code == 200
+    finally:
+        update_runtime_payment_config(gate_mode="off", star_gate_mode="off", free_daily_calls_per_client=5)
+
+
+
 
 
 

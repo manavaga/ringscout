@@ -44,11 +44,19 @@ _PROCESS_MPP_SECRET = secrets.token_hex(32)
 SPENT_STRIPE_TOKENS: OrderedDict[str, float] = OrderedDict()
 
 
+GITHUB_REPO_SLUG = os.environ.get("RINGSCOUT_GITHUB_REPO", "manavaga/ringscout").strip() or "manavaga/ringscout"
+GITHUB_REPO_URL = f"https://github.com/{GITHUB_REPO_SLUG}"
+_GITHUB_USER_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
+_GITHUB_STAR_CACHE: OrderedDict[str, tuple[bool, float]] = OrderedDict()
+_DAILY_STARGAZER_USAGE: OrderedDict[str, int] = OrderedDict()
+
+
 @dataclass
 class RuntimePaymentConfig:
-    """In-memory operator configuration for Phase A (open) vs Phase B (freemium / paid) & Stripe keys."""
+    """In-memory operator configuration for Phase A (open) vs Phase B (freemium / paid), Star-Gate & Stripe keys."""
 
     gate_mode: str = "off"  # "off" (Phase A live open), "freemium" (N free/day then paid), "required"
+    star_gate_mode: str = "off"  # "off", "after_first_call" (1 free call then star for 5/day), "strict" (star required from call 1)
     free_daily_calls_per_client: int = 5
     global_daily_free_pstn_legs: int = 25
     stripe_secret_key: str = ""
@@ -57,6 +65,7 @@ class RuntimePaymentConfig:
 
 _RUNTIME_PAY_CFG = RuntimePaymentConfig(
     gate_mode=os.environ.get("RINGSCOUT_PAYMENT_GATE_MODE", "off").strip().lower() or "off",
+    star_gate_mode=os.environ.get("RINGSCOUT_STAR_GATE_MODE", "off").strip().lower() or "off",
     free_daily_calls_per_client=int(os.environ.get("RINGSCOUT_FREE_DAILY_CALLS", "5")),
     global_daily_free_pstn_legs=int(os.environ.get("RINGSCOUT_GLOBAL_DAILY_FREE_PSTN_CAP", "25")),
     stripe_secret_key=os.environ.get("STRIPE_SECRET_KEY", "").strip(),
@@ -113,9 +122,74 @@ def get_effective_checkout_url() -> str:
     return os.environ.get("STRIPE_CHECKOUT_URL", "").strip() or _RUNTIME_PAY_CFG.stripe_checkout_url.strip()
 
 
+def get_star_gate_mode() -> str:
+    """Resolve GitHub Star-Gate mode: 'off', 'after_first_call', or 'strict'."""
+    env_mode = os.environ.get("RINGSCOUT_STAR_GATE_MODE", "").strip().lower()
+    if env_mode in ("off", "after_first_call", "strict"):
+        return env_mode
+    return (
+        _RUNTIME_PAY_CFG.star_gate_mode
+        if _RUNTIME_PAY_CFG.star_gate_mode in ("off", "after_first_call", "strict")
+        else "off"
+    )
+
+
+async def verify_github_stargazer(github_username: str | None) -> bool:
+    """Check whether `github_username` has starred `manavaga/ringscout` on GitHub (60s TTL cache)."""
+    clean = (github_username or "").strip().lstrip("@")
+    if not clean or not _GITHUB_USER_RE.match(clean):
+        return False
+    cache_key = clean.lower()
+    now = time.time()
+    cached = _GITHUB_STAR_CACHE.get(cache_key)
+    if cached is not None and (now - cached[1]) < 60.0:
+        return cached[0]
+
+    url = f"https://api.github.com/users/{clean}/starred/{GITHUB_REPO_SLUG}"
+    hdrs = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "RingScout-StarGate/3.0",
+    }
+    gh_tok = os.environ.get("GITHUB_TOKEN", "").strip()
+    if gh_tok:
+        hdrs["Authorization"] = f"Bearer {gh_tok}"
+    try:
+        async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as http:
+            resp = await http.get(url, headers=hdrs)
+            starred = resp.status_code == 204
+    except Exception as exc:
+        logger.warning("GitHub star check failed for %s: %s", clean, exc)
+        starred = False
+
+    _GITHUB_STAR_CACHE[cache_key] = (starred, now)
+    while len(_GITHUB_STAR_CACHE) > 2048:
+        _GITHUB_STAR_CACHE.popitem(last=False)
+    return starred
+
+
+def get_client_daily_used(client_id: str) -> int:
+    day = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+    return _DAILY_CLIENT_USAGE.get(f"{day}:{client_id or 'anon'}", 0)
+
+
+def check_and_increment_stargazer_quota(github_username: str) -> tuple[bool, int, int]:
+    """Per-GitHub-username daily cap so one stargazer handle cannot be shared unboundedly."""
+    day = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+    key = f"{day}:{github_username.strip().lstrip('@').lower()}"
+    limit = max(1, _RUNTIME_PAY_CFG.free_daily_calls_per_client)
+    used = _DAILY_STARGAZER_USAGE.get(key, 0)
+    if used >= limit:
+        return False, used, limit
+    _DAILY_STARGAZER_USAGE[key] = used + 1
+    while len(_DAILY_STARGAZER_USAGE) > 4096:
+        _DAILY_STARGAZER_USAGE.popitem(last=False)
+    return True, used + 1, limit
+
+
 def update_runtime_payment_config(
     *,
     gate_mode: str | None = None,
+    star_gate_mode: str | None = None,
     free_daily_calls_per_client: int | None = None,
     global_daily_free_pstn_legs: int | None = None,
     stripe_secret_key: str | None = None,
@@ -123,6 +197,8 @@ def update_runtime_payment_config(
 ) -> dict[str, Any]:
     if gate_mode and gate_mode.lower() in ("off", "freemium", "required"):
         _RUNTIME_PAY_CFG.gate_mode = gate_mode.lower()
+    if star_gate_mode and star_gate_mode.lower() in ("off", "after_first_call", "strict"):
+        _RUNTIME_PAY_CFG.star_gate_mode = star_gate_mode.lower()
     if free_daily_calls_per_client is not None and 1 <= free_daily_calls_per_client <= 500:
         _RUNTIME_PAY_CFG.free_daily_calls_per_client = free_daily_calls_per_client
     if global_daily_free_pstn_legs is not None and 1 <= global_daily_free_pstn_legs <= 2000:
@@ -139,6 +215,8 @@ def masked_payment_status() -> dict[str, Any]:
     masked_sk = f"{sk[:7]}...{sk[-4:]}" if len(sk) > 12 else ("configured" if sk else None)
     return {
         "gate_mode": get_payment_gate_mode(),
+        "star_gate_mode": get_star_gate_mode(),
+        "github_repo": GITHUB_REPO_URL,
         "free_daily_calls_per_client": _RUNTIME_PAY_CFG.free_daily_calls_per_client,
         "global_daily_free_pstn_legs": _RUNTIME_PAY_CFG.global_daily_free_pstn_legs,
         "stripe_configured": bool(sk),

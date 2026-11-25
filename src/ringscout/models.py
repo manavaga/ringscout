@@ -321,6 +321,11 @@ class A2AScoutRequest(BaseModel):
         max_length=60,
         description="Optional first name used as a natural caller confidence marker.",
     )
+    github_username: str = Field(
+        default="",
+        max_length=60,
+        description="Optional GitHub handle that starred https://github.com/manavaga/ringscout to unlock free live calls.",
+    )
     item_question: str = Field(
         ...,
         min_length=3,

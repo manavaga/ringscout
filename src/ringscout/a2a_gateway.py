@@ -42,14 +42,19 @@ from ringscout.models import (
     VocalTone,
 )
 from ringscout.stripe_protocol import (
+    GITHUB_REPO_URL,
     build_stripe_mpp_challenge,
     build_stripe_payment_receipt_header,
     check_and_increment_free_quota,
     check_and_increment_global_free_pstn_legs,
+    check_and_increment_stargazer_quota,
+    get_client_daily_used,
     get_effective_checkout_url,
     get_payment_gate_mode,
+    get_star_gate_mode,
     is_automated_scanner_user_agent,
     masked_payment_status,
+    verify_github_stargazer,
     verify_stripe_agent_payment,
 )
 from ringscout.voice_engine import (
@@ -407,6 +412,7 @@ async def verify_a2a_payment(
     client_fingerprint: str = "default_agent",
     user_agent: str | None = None,
     execution_mode: str = "auto",
+    github_username: str | None = None,
 ) -> tuple[PaymentSettlement | None, str]:
     """Verify Phase A open quota OR Phase B `x402` v2 EIP-3009 / `Stripe MPP` (`SPT`/`PaymentIntent`) / `AP2`."""
     mandate, mandate_digest, mandate_err = validate_ap2_mandate(ap2_mandate, ap2_header_raw)
@@ -646,6 +652,26 @@ async def verify_a2a_payment(
                     None,
                     "Payment Required ($0.75 USD via Stripe MPP / SPT or x402 Base USDC) to place real-time +91 PSTN phone calls.",
                 )
+
+        # Optional GitHub Star-Gate ("after_first_call" = 1 free call then star; "strict" = star required from call 1)
+        star_mode = get_star_gate_mode()
+        if execution_mode != "swarm" and star_mode in ("after_first_call", "strict"):
+            used_today = get_client_daily_used(client_fingerprint)
+            needs_star = (star_mode == "strict") or (used_today >= 1)
+            if needs_star:
+                clean_gh = (github_username or "").strip().lstrip("@")
+                if not clean_gh or not await verify_github_stargazer(clean_gh):
+                    return (
+                        None,
+                        f"Star {GITHUB_REPO_URL} on GitHub and pass your `github_username` (or `X-GitHub-Username` header) to unlock free live +91 phone calls, or attach $0.75 Stripe MPP / x402 payment.",
+                    )
+                gh_ok, _gh_used, gh_limit = check_and_increment_stargazer_quota(clean_gh)
+                if not gh_ok:
+                    return (
+                        None,
+                        f"Daily GitHub Stargazer free quota ({gh_limit} calls/day for @{clean_gh}) reached; attach Stripe MPP or x402 payment header to continue.",
+                    )
+
         within_quota, _used, limit = check_and_increment_free_quota(client_fingerprint)
         if within_quota:
             return (
@@ -1263,6 +1289,7 @@ async def handle_a2a_jsonrpc(
     stripe_token_header: str | None = None,
     client_fingerprint: str = "a2a_agent",
     user_agent: str | None = None,
+    github_username_header: str | None = None,
 ) -> tuple[int, dict[str, str], dict[str, Any]]:
     """Handle official Google A2A v1.0 JSON-RPC (`message/send`, `tasks/get`, `tasks/cancel`)."""
     method = str(rpc_body.get("method") or "")
@@ -1333,6 +1360,18 @@ async def handle_a2a_jsonrpc(
                 )
 
         peek_mode = _peek_a2a_execution_mode(message_obj, metadata)
+        eff_gh_user = (
+            github_username_header
+            or str(metadata.get("githubUsername") or metadata.get("github_username") or "").strip()
+            or None
+        )
+        if not eff_gh_user:
+            for part in message_obj.get("parts") or []:
+                if isinstance(part, dict) and isinstance(part.get("data"), dict):
+                    cand_gh = str(part["data"].get("github_username") or "").strip()
+                    if cand_gh:
+                        eff_gh_user = cand_gh
+                        break
         settlement, reason = await verify_a2a_payment(
             resource_url=resource_url,
             payment_sig_header=eff_sig,
@@ -1345,6 +1384,7 @@ async def handle_a2a_jsonrpc(
             client_fingerprint=client_fingerprint,
             user_agent=user_agent,
             execution_mode=peek_mode,
+            github_username=eff_gh_user,
         )
         if settlement is None:
             hdrs, challenge_body = build_402_challenge(resource_url, detail=reason)
@@ -1523,6 +1563,11 @@ _SCOUT_MCP_INPUT_SCHEMA: dict[str, Any] = {
         "caller_name": {
             "type": "string",
             "description": "Optional caller first name (e.g. 'Rahul') used as a polite human confidence marker.",
+            "default": "",
+        },
+        "github_username": {
+            "type": "string",
+            "description": "Optional GitHub handle that starred https://github.com/manavaga/ringscout to unlock bonus free live calls.",
             "default": "",
         },
         "max_shops": {
@@ -1753,6 +1798,7 @@ async def handle_mcp_jsonrpc(
     stripe_token_header: str | None = None,
     client_fingerprint: str = "mcp_connector",
     user_agent: str | None = None,
+    github_username_header: str | None = None,
     out_headers: dict[str, str] | None = None,
     incoming_session_id: str | None = None,
 ) -> dict[str, Any] | None:
@@ -1948,6 +1994,7 @@ async def handle_mcp_jsonrpc(
                 else None
             )
             mcp_exec_mode = str(args.get("execution_mode") or "auto")
+            mcp_gh_user = github_username_header or str(args.get("github_username") or "").strip() or None
             settlement, reason = await verify_a2a_payment(
                 resource_url=f"{clean_base}/mcp",
                 payment_sig_header=eff_payment_sig,
@@ -1960,6 +2007,7 @@ async def handle_mcp_jsonrpc(
                 client_fingerprint=client_fingerprint,
                 user_agent=user_agent,
                 execution_mode=mcp_exec_mode,
+                github_username=mcp_gh_user,
             )
             if settlement is None:
                 _, challenge_body = build_402_challenge(
@@ -2118,16 +2166,40 @@ async def handle_mcp_payload(
 def build_openapi_actions_spec(base_url: str) -> dict[str, Any]:
     """Build OpenAPI 3.1.0 schema for 1-click import into ChatGPT Custom GPT Actions & OpenAPI Agents."""
     clean = base_url.rstrip("/")
+    quote_item_schema: dict[str, Any] = {
+        "type": "object",
+        "properties": {
+            "shop_id": {"type": "string"},
+            "name": {"type": "string"},
+            "phone_display": {"type": "string"},
+            "address": {"type": "string"},
+            "is_live_pstn": {"type": "boolean"},
+            "carrier_provider": {"type": ["string", "null"]},
+            "call_uuid": {"type": ["string", "null"]},
+            "call_outcome": {"type": "string"},
+            "duration_sec": {"type": "number"},
+            "in_stock": {"type": ["boolean", "null"]},
+            "availability_label": {"type": "string"},
+            "price_display": {"type": ["string", "null"]},
+            "eta_or_slot": {"type": ["string", "null"]},
+            "notes": {"type": "string"},
+            "audio_proof_url": {"type": ["string", "null"]},
+        },
+    }
     return {
         "openapi": "3.1.0",
         "info": {
             "title": "RingScout — Real-Time Google Maps Voice Insights API",
             "version": "3.0.0",
             "description": (
-                "Calls real open hotels, restaurants, clinics, MRI centers, petrol pumps, salons, auto shops, "
+                "Calls real open hotels, restaurants, spas, salons, clinics, MRI centers, petrol pumps, auto shops, "
                 "or pharmacies found on Google Maps in parallel (Indian English & Hindi) to verify live room/table/slot "
                 "availability, wait times, ₹ tariffs/prices, and custom answers with playable .wav audio proof."
             ),
+        },
+        "externalDocs": {
+            "description": "RingScout Open-Source Repository (Star on GitHub)",
+            "url": GITHUB_REPO_URL,
         },
         "servers": [{"url": clean}],
         "paths": {
@@ -2136,9 +2208,10 @@ def build_openapi_actions_spec(base_url: str) -> dict[str, Any]:
                     "operationId": "scoutPlacesOnGoogleMaps",
                     "summary": "Find open places on Google Maps and call them in parallel to verify live availability & ₹ rates",
                     "description": (
-                        "Discovers up to 5 open Google Maps places matching the category/area and conducts brief, "
-                        "natural voice calls to verify live availability, wait times, rates in ₹, and specific questions."
+                        "Discovers open Google Maps places matching the category/area and conducts brief, real-time "
+                        "+91 voice calls to verify live availability, wait times, rates in ₹, and specific questions."
                     ),
+                    "x-openai-isConsequential": False,
                     "requestBody": {
                         "required": True,
                         "content": {
@@ -2150,12 +2223,12 @@ def build_openapi_actions_spec(base_url: str) -> dict[str, Any]:
                                         "place_category": {
                                             "type": "string",
                                             "enum": [c.value for c in PlaceCategory],
-                                            "default": "hotel",
+                                            "default": "restaurant",
                                             "description": "Location category on Google Maps.",
                                         },
                                         "item_question": {
                                             "type": "string",
-                                            "description": "What to ask the place on the phone call.",
+                                            "description": "Exact question to ask the business on the live phone call.",
                                         },
                                         "city": {
                                             "type": "string",
@@ -2177,11 +2250,17 @@ def build_openapi_actions_spec(base_url: str) -> dict[str, Any]:
                                             "default": "",
                                             "description": "Optional caller first name for natural greeting.",
                                         },
+                                        "github_username": {
+                                            "type": "string",
+                                            "default": "",
+                                            "description": "Optional GitHub username that starred https://github.com/manavaga/ringscout.",
+                                        },
                                         "max_shops": {
                                             "type": "integer",
                                             "minimum": 1,
                                             "maximum": 5,
-                                            "default": 3,
+                                            "default": 2,
+                                            "description": "Number of open places to call in parallel (1 to 5).",
                                         },
                                         "preferred_tone": {
                                             "type": "string",
@@ -2191,6 +2270,7 @@ def build_openapi_actions_spec(base_url: str) -> dict[str, Any]:
                                                 "natural_hindi",
                                             ],
                                             "default": "polite_indian_english",
+                                            "description": "Spoken voice accent and language.",
                                         },
                                     },
                                 }
@@ -2200,11 +2280,35 @@ def build_openapi_actions_spec(base_url: str) -> dict[str, Any]:
                     "responses": {
                         "200": {
                             "description": "Ranked verified insights, ₹ quotes, transcripts, and 24kHz .wav audio URLs.",
-                            "content": {"application/json": {"schema": {"type": "object"}}},
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "quest_id": {"type": "string"},
+                                            "place_category": {"type": "string"},
+                                            "execution_mode": {"type": "string"},
+                                            "is_live_pstn": {"type": "boolean"},
+                                            "best_match": {"anyOf": [quote_item_schema, {"type": "null"}]},
+                                            "ranked_quotes": {"type": "array", "items": quote_item_schema},
+                                        },
+                                    }
+                                }
+                            },
                         },
                         "402": {
-                            "description": "Payment Required when Phase B Stripe MPP or x402 USDC gate is enabled.",
-                            "content": {"application/json": {"schema": {"type": "object"}}},
+                            "description": "Star-Gate or Payment Required when free quota is exceeded.",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "x402Version": {"type": "integer"},
+                                            "error": {"type": "string"},
+                                        },
+                                    }
+                                }
+                            },
                         },
                     },
                 }
@@ -2212,11 +2316,30 @@ def build_openapi_actions_spec(base_url: str) -> dict[str, Any]:
             "/api/v1/pricing": {
                 "get": {
                     "operationId": "getRingScoutStatusAndPricing",
-                    "summary": "Check active Phase A (free) vs Phase B (Stripe MPP / x402) status and capabilities",
+                    "summary": "Check active free tier, GitHub Star-Gate, and PSTN voice capabilities",
+                    "x-openai-isConsequential": False,
                     "responses": {
                         "200": {
                             "description": "Pricing and protocol capabilities.",
-                            "content": {"application/json": {"schema": {"type": "object"}}},
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "x402Version": {"type": "integer"},
+                                            "paymentStatus": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "gate_mode": {"type": "string"},
+                                                    "star_gate_mode": {"type": "string"},
+                                                    "github_repo": {"type": "string"},
+                                                    "free_daily_calls_per_client": {"type": "integer"},
+                                                },
+                                            },
+                                        },
+                                    }
+                                }
+                            },
                         }
                     },
                 }
