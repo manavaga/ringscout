@@ -122,4 +122,4 @@ MIT — see [LICENSE](LICENSE).
 
 **Important:** RingScout reports information communicated during a call. Businesses may not answer, and availability, prices and terms can change. Confirm important details directly with the business. RingScout does not itself complete a booking or purchase unless a distinct workflow expressly states otherwise.
 
-The Privacy Notice and Terms are working drafts pending operator verification of contact details, data retention, production processors, pricing and applicable legal terms. They should not be treated as final until those items are confirmed.
+The Privacy Notice and Terms identify Manav Agarwal and agarwalmanav91@gmail.com, and specify Indian law. They remain drafts: the source audit found that AI/recording disclosures are not proactive, public dashboard responses expose transcripts and signed audio links, and actual Cloud Logging retention has not been verified. These issues must be resolved before public launch.
