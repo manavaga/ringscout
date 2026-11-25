@@ -33,7 +33,9 @@ from ringscout.a2a_gateway import (
     BASE_SEPOLIA_CAIP2_NETWORK,
     build_402_challenge,
     build_agent_card,
+    build_agents_json_manifest,
     build_ai_catalog_manifest,
+    build_ai_plugin_manifest,
     build_mcp_registry_manifest,
     build_mcp_server_card,
     build_official_server_json,
@@ -188,6 +190,17 @@ _AI_BOT_SIGNATURES: list[tuple[str, str]] = [
     ("perplexity-user", "Perplexity Live Fetch"),
     ("applebot", "Applebot / Siri"),
     ("bingbot", "Bingbot / Copilot"),
+    ("amazonbot", "Amazonbot / Alexa AI"),
+    ("duckassistbot", "DuckAssistBot"),
+    ("youbot", "You.com AI Bot"),
+    ("rnwy-toollistread", "RNWY MCP Directory Indexer"),
+    ("mcpbeat", "MCPBeat Directory Monitor"),
+    ("sentineloracle", "Glimind SentinelOracle MCP Probe"),
+    ("alalanet-prober", "AlalaNet MCP Directory Prober"),
+    ("glama", "Glama MCP Scanner"),
+    ("smithery", "Smithery MCP Scanner"),
+    ("pulsemcp", "PulseMCP Crawler"),
+    ("mcp-directory-scanner", "MCP Directory Audit Scanner"),
 ]
 
 _REFERRAL_SIGNATURES: list[tuple[str, str]] = [
@@ -264,11 +277,13 @@ class TrafficAnalyticsTracker:
             proto_label = "ChatGPT Actions Schema Fetch (/openapi-actions.json)"
         elif path in ("/.well-known/agent-card.json", "/.well-known/agent.json"):
             proto_label = "A2A Agent Card Discovery"
-        elif path in ("/.well-known/mcp.json", "/.well-known/mcp/server-card.json", "/mcp/server-card", "/server.json"):
+        elif path in ("/.well-known/mcp.json", "/.well-known/mcp", "/.well-known/mcp/server-card.json", "/mcp/server-card", "/server.json"):
             proto_label = "MCP Registry / Server Card Discovery"
-        elif path == "/.well-known/ai-catalog.json":
+        elif path in ("/.well-known/ai-catalog.json", "/.well-known/ai-catalog"):
             proto_label = "SEP-2127 AI Catalog Discovery"
-        elif path in ("/llms.txt", "/llms-full.txt"):
+        elif path in ("/.well-known/agents.json", "/agents.json"):
+            proto_label = "Multi-Agent agents.json Discovery"
+        elif path in ("/llms.txt", "/llms-full.txt", "/.well-known/llms.txt"):
             proto_label = "GEO /llms.txt Crawl"
         elif path in ("/.well-known/x402", "/api/v1/x402/discovery"):
             proto_label = "x402 / Bazaar Catalog Probe"
@@ -767,6 +782,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
             "Payment-Receipt",
             "Mcp-Session-Id",
             "MCP-Protocol-Version",
+            "Link",
         ],
     )
     manager = QuestManager(
@@ -777,9 +793,20 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
     app.state.manager = manager
     app.state.analytics = analytics
 
+    _RFC8288_AGENT_LINKS = (
+        '</.well-known/ai-catalog.json>; rel="ai-catalog"; type="application/ai-catalog+json", '
+        '</.well-known/mcp/server-card.json>; rel="mcp-server-card"; type="application/mcp-server-card+json", '
+        '</.well-known/agent-card.json>; rel="agent-card"; type="application/a2a-agent-card+json", '
+        '</.well-known/agents.json>; rel="agents"; type="application/json", '
+        '</openapi-actions.json>; rel="service-desc"; type="application/vnd.oai.openapi+json", '
+        '</llms.txt>; rel="llms-txt"; type="text/markdown"'
+    )
+
     @app.middleware("http")
     async def track_organic_and_ai_traffic(request: Request, call_next: Any) -> Response:
         response: Response = await call_next(request)
+        if request.url.path in ("/", "/developers", "/dashboard", "/ping", "/api/health"):
+            response.headers.setdefault("Link", _RFC8288_AGENT_LINKS)
         try:
             analytics.record_request(request, response.status_code)
         except Exception:
@@ -850,12 +877,17 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
             "User-agent: Google-Extended\nAllow: /\n\n"
             "User-agent: Googlebot\nAllow: /\n\n"
             "User-agent: PerplexityBot\nAllow: /\n\n"
+            "User-agent: Applebot\nAllow: /\n\n"
+            "User-agent: Amazonbot\nAllow: /\n\n"
+            "User-agent: DuckAssistBot\nAllow: /\n\n"
+            "User-agent: YouBot\nAllow: /\n\n"
             "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api/admin/\nDisallow: /api/pstn/\n\n"
             f"Sitemap: {base_url}/sitemap.xml\n"
         )
         return PlainTextResponse(content=body)
 
     @app.get("/llms.txt", include_in_schema=False)
+    @app.get("/.well-known/llms.txt", include_in_schema=False)
     async def llms_txt(request: Request) -> Response:
         base_url = _derive_public_base_url(request, manager.pstn_adapter)
         return Response(
@@ -871,6 +903,18 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
             media_type="text/markdown; charset=utf-8",
         )
 
+    @app.get("/.well-known/security.txt", include_in_schema=False)
+    async def security_txt(request: Request) -> PlainTextResponse:
+        base_url = _derive_public_base_url(request, manager.pstn_adapter).rstrip("/")
+        body = (
+            "Contact: https://github.com/manavaga/ringscout/issues\n"
+            "Expires: 2027-12-31T23:59:59.000Z\n"
+            "Preferred-Languages: en\n"
+            f"Canonical: {base_url}/.well-known/security.txt\n"
+            f"Policy: {base_url}/developers\n"
+        )
+        return PlainTextResponse(content=body)
+
     @app.get("/sitemap.xml", include_in_schema=False)
     async def sitemap_xml(request: Request) -> Response:
         base_url = _derive_public_base_url(request, manager.pstn_adapter)
@@ -885,7 +929,9 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
             f"{base_url}/.well-known/mcp.json",
             f"{base_url}/server.json",
             f"{base_url}/.well-known/agent-card.json",
+            f"{base_url}/.well-known/agents.json",
             f"{base_url}/openapi-actions.json",
+            f"{base_url}/.well-known/x402",
         ]
         items = "".join(f"<url><loc>{u}</loc></url>" for u in urls)
         xml = f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{items}</urlset>'
@@ -1516,6 +1562,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
         return build_agent_card(base_url, manager.pstn_adapter.is_configured())
 
     @app.get("/.well-known/mcp.json")
+    @app.get("/.well-known/mcp")
     async def mcp_registry_card(request: Request) -> dict[str, Any]:
         base_url = _derive_public_base_url(request, manager.pstn_adapter)
         return build_mcp_registry_manifest(base_url, live_pstn_ready=manager.pstn_adapter.is_configured())
@@ -1538,6 +1585,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
         )
 
     @app.get("/.well-known/ai-catalog.json")
+    @app.get("/.well-known/ai-catalog")
     async def ai_catalog_well_known(request: Request) -> Response:
         base_url = _derive_public_base_url(request, manager.pstn_adapter)
         catalog = build_ai_catalog_manifest(base_url)
@@ -1552,6 +1600,17 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
             media_type=media_type,
             headers={"Cache-Control": "public, max-age=300"},
         )
+
+    @app.get("/.well-known/agents.json")
+    @app.get("/agents.json")
+    async def agents_json_manifest(request: Request) -> dict[str, Any]:
+        base_url = _derive_public_base_url(request, manager.pstn_adapter)
+        return build_agents_json_manifest(base_url)
+
+    @app.get("/.well-known/ai-plugin.json")
+    async def ai_plugin_manifest(request: Request) -> dict[str, Any]:
+        base_url = _derive_public_base_url(request, manager.pstn_adapter)
+        return build_ai_plugin_manifest(base_url)
 
     @app.get("/.well-known/mcp-registry-auth", include_in_schema=False)
     async def mcp_registry_http_domain_verification() -> PlainTextResponse:
@@ -1569,6 +1628,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
         return PlainTextResponse(content=proof, headers={"Cache-Control": "no-store"})
 
     @app.get("/openapi-actions.json")
+    @app.get("/.well-known/openapi.json")
     async def chatgpt_openapi_actions(request: Request) -> dict[str, Any]:
         base_url = _derive_public_base_url(request, manager.pstn_adapter)
         return build_openapi_actions_spec(base_url)
@@ -1804,6 +1864,21 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
             return Response(status_code=202, headers=mcp_headers)
         return JSONResponse(status_code=200, content=rpc_resp, headers=mcp_headers)
 
+    @app.head("/sse")
+    async def mcp_legacy_sse_head() -> Response:
+        return Response(
+            status_code=200,
+            headers={"Allow": "GET, POST, HEAD, OPTIONS", "MCP-Protocol-Version": "2025-06-18"},
+        )
+
+    @app.post("/sse")
+    async def mcp_dual_sse_post(request: Request) -> Response:
+        """Accept Streamable HTTP JSON-RPC POSTs on `/sse` for dual-transport scanners (e.g. `alalanet-prober`)."""
+        rpc_resp, mcp_headers = await _dispatch_mcp_request(request)
+        if rpc_resp is None:
+            return Response(status_code=202, headers=mcp_headers)
+        return JSONResponse(status_code=200, content=rpc_resp, headers=mcp_headers)
+
     @app.get("/sse")
     async def mcp_legacy_sse_connect(request: Request) -> StreamingResponse:
         """Backward-compatible MCP `2024-11-05` HTTP+SSE transport (`GET /sse` + `POST /messages`)."""
@@ -1999,7 +2074,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
 
     # --- Four Cleanly Separated Frontend Surfaces ---
 
-    @app.get("/", include_in_schema=False)
+    @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
     async def consumer_website_page() -> FileResponse:
         return FileResponse(STATIC_DIR / "index.html")
 

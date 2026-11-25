@@ -2237,7 +2237,82 @@ def build_ai_catalog_manifest(base_url: str) -> dict[str, Any]:
         "version": "1.0",
         "domain": clean,
         "service": "RingScout — Parallel Google Maps Voice Scout",
-        "updatedAt": "2026-11-24T00:00:00Z",
+        "updatedAt": "2026-11-25T00:00:00Z",
         "entries": entries,
         "catalog": entries,
+    }
+
+
+def build_agents_json_manifest(base_url: str) -> dict[str, Any]:
+    """Build `/.well-known/agents.json` multi-agent & OpenAPI workflow manifest (`agents.json` standard)."""
+    clean = base_url.rstrip("/")
+    return {
+        "schemaVersion": "1.0.0",
+        "name": "RingScout — Parallel Google Maps Voice Scout",
+        "description": MCP_SERVER_INSTRUCTIONS,
+        "url": clean,
+        "sources": [
+            {
+                "id": "ringscout_openapi",
+                "type": "openapi",
+                "url": f"{clean}/openapi-actions.json",
+            },
+            {
+                "id": "ringscout_mcp",
+                "type": "mcp-streamable-http",
+                "url": f"{clean}/mcp",
+                "serverCard": f"{clean}/.well-known/mcp/server-card.json",
+            },
+            {
+                "id": "ringscout_a2a",
+                "type": "google-a2a",
+                "url": f"{clean}/a2a",
+                "agentCard": f"{clean}/.well-known/agent-card.json",
+            },
+        ],
+        "agents": [
+            {
+                "id": "ringscout-voice-oracle",
+                "name": "RingScout Google Maps Voice Scout",
+                "protocol": "a2a+mcp",
+                "mcpEndpoint": f"{clean}/mcp",
+                "a2aEndpoint": f"{clean}/a2a",
+                "agentCardUrl": f"{clean}/.well-known/agent-card.json",
+                "serverCardUrl": f"{clean}/.well-known/mcp/server-card.json",
+                "skills": ["get_ringscout_pricing_and_status", "scout_places_on_google_maps"],
+            }
+        ],
+        "flows": [
+            {
+                "id": "verify_live_availability_and_inr_rates",
+                "description": (
+                    "Check status/pricing via `getRingScoutStatusAndPricing`, then place parallel voice calls "
+                    "to open Google Maps businesses via `scoutPlacesOnGoogleMaps` and return ranked ₹ quotes + 24kHz WAV proof."
+                ),
+                "actions": [
+                    {"sourceId": "ringscout_openapi", "operationId": "getRingScoutStatusAndPricing"},
+                    {"sourceId": "ringscout_openapi", "operationId": "scoutPlacesOnGoogleMaps"},
+                ],
+            }
+        ],
+    }
+
+
+def build_ai_plugin_manifest(base_url: str) -> dict[str, Any]:
+    """Build `/.well-known/ai-plugin.json` manifest for OpenAPI-based agent & plugin loaders."""
+    clean = base_url.rstrip("/")
+    return {
+        "schema_version": "v1",
+        "name_for_human": "RingScout Voice Scout",
+        "name_for_model": "ringscout_google_maps_voice",
+        "description_for_human": "Calls open Google Maps businesses (+91) in parallel to verify live availability, wait times, and ₹ rates.",
+        "description_for_model": MCP_SERVER_INSTRUCTIONS,
+        "auth": {"type": "none"},
+        "api": {
+            "type": "openapi",
+            "url": f"{clean}/openapi-actions.json",
+            "is_user_authenticated": False,
+        },
+        "contact_email": "manavagarwal@users.noreply.github.com",
+        "legal_info_url": f"{clean}/developers",
     }

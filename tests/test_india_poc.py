@@ -2248,6 +2248,25 @@ def test_mcp_full_discovery_sep2127_sse_batch_prompts_resources_and_registry_sch
     ).json()
     assert unknown_tool["error"]["code"] == -32602
 
+    # 5. RFC 8288 Web-Native Link headers, HTML <link> tags, POST /sse dual-transport, agents.json & security.txt
+    root_get = client.get("/")
+    assert root_get.status_code == 200
+    assert 'rel="ai-catalog"' in root_get.headers.get("link", "")
+    assert 'rel="mcp-server-card"' in root_get.headers.get("link", "")
+    assert 'rel="mcp-server-card"' in root_get.text
+    assert client.head("/").status_code == 200
+
+    sse_dual_post = client.post("/sse", json={"jsonrpc": "2.0", "id": 40, "method": "ping"})
+    assert sse_dual_post.status_code == 200
+    assert sse_dual_post.json()["result"] == {}
+
+    assert client.get("/.well-known/ai-catalog").status_code == 200
+    assert client.get("/.well-known/mcp").status_code == 200
+    assert client.get("/.well-known/agents.json").json()["flows"][0]["id"] == "verify_live_availability_and_inr_rates"
+    assert client.get("/.well-known/ai-plugin.json").json()["name_for_model"] == "ringscout_google_maps_voice"
+    assert "Contact:" in client.get("/.well-known/security.txt").text
+
+
 
 
 

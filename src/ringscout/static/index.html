@@ -6,6 +6,12 @@
   <title>RingScout — Parallel AI Voice Calls for Google Maps Places</title>
   <meta name="description" content="Find any spa, salon, hotel, restaurant, MRI lab, or local business on Google Maps — or add a specific place — and call them in parallel in natural Indian English or Hindi." />
   <link rel="canonical" href="https://ringscout-hom7ntreuq-uc.a.run.app/" />
+  <link rel="ai-catalog" type="application/ai-catalog+json" href="/.well-known/ai-catalog.json" />
+  <link rel="mcp-server-card" type="application/mcp-server-card+json" href="/.well-known/mcp/server-card.json" />
+  <link rel="agent-card" type="application/a2a-agent-card+json" href="/.well-known/agent-card.json" />
+  <link rel="agents" type="application/json" href="/.well-known/agents.json" />
+  <link rel="service-desc" type="application/vnd.oai.openapi+json" href="/openapi-actions.json" />
+  <link rel="alternate" type="text/markdown" href="/llms.txt" title="RingScout LLM &amp; Agent Integration Guide" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -13,11 +19,23 @@
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    "name": "RingScout",
-    "applicationCategory": "BusinessApplication",
-    "operatingSystem": "Web, MCP, Google A2A",
-    "description": "Parallel AI voice agent that calls real open Google Maps businesses (+91) in natural Indian English and Hindi to confirm live availability, appointments, and INR pricing with 24kHz WAV proof."
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "name": "RingScout",
+        "url": "https://ringscout-hom7ntreuq-uc.a.run.app/",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web, MCP, Google A2A",
+        "description": "Parallel AI voice agent that calls real open Google Maps businesses (+91) in natural Indian English and Hindi to confirm live availability, appointments, and INR pricing with 24kHz WAV proof."
+      },
+      {
+        "@type": "WebAPI",
+        "name": "RingScout Remote MCP & Agent2Agent API",
+        "url": "https://ringscout-hom7ntreuq-uc.a.run.app/mcp",
+        "documentation": "https://ringscout-hom7ntreuq-uc.a.run.app/openapi-actions.json",
+        "description": "Remote Streamable HTTP MCP (/mcp), Google A2A v1.0 (/a2a), SEP-2127 Server Card (/.well-known/mcp/server-card.json), and OpenAPI 3.1 (/openapi-actions.json) gateway."
+      }
+    ]
   }
   </script>
 

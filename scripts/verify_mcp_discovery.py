@@ -379,6 +379,41 @@ def run_audit(base_url: str, *, strict_v31: bool = True) -> int:
         optional=True,
     )
 
+    st_sse_post, _, raw_sse_post = _http_call(
+        f"{clean}/sse",
+        method="POST",
+        json_body={"jsonrpc": "2.0", "id": 70, "method": "ping"},
+    )
+    record(
+        st_sse_post == 200 and json.loads(raw_sse_post.decode("utf-8")).get("result") == {},
+        "POST /sse (Dual-Transport Prober Compatibility)",
+        f"HTTP {st_sse_post}",
+        optional=True,
+    )
+
+    st_root, hdr_root, raw_root = _http_call(f"{clean}/")
+    link_hdr = hdr_root.get("link", "")
+    record(
+        st_root == 200
+        and 'rel="ai-catalog"' in link_hdr
+        and 'rel="mcp-server-card"' in link_hdr
+        and 'rel="agent-card"' in link_hdr
+        and b'rel="mcp-server-card"' in raw_root,
+        "GET / RFC 8288 HTTP Link headers + HTML <link> auto-discovery",
+        f"HTTP {st_root}",
+        optional=True,
+    )
+
+    st_agj, _, raw_agj = _http_call(f"{clean}/.well-known/agents.json")
+    st_aip, _, _ = _http_call(f"{clean}/.well-known/ai-plugin.json")
+    st_sec, _, raw_sec = _http_call(f"{clean}/.well-known/security.txt")
+    record(
+        st_agj == 200 and st_aip == 200 and st_sec == 200 and b"ringscout" in raw_agj and b"Contact:" in raw_sec,
+        "GET /.well-known/{agents.json, ai-plugin.json, security.txt}",
+        f"HTTP {st_agj}/{st_aip}/{st_sec}",
+        optional=True,
+    )
+
     print(f"\nSummary for {clean}: {passed} passed, {warned} warnings, {failed} failed.")
     return 1 if failed > 0 else 0
 
