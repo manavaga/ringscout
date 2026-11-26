@@ -65,6 +65,7 @@ from ringscout.voice_engine import (
     is_human_hold_phrase,
     is_ivr_or_hold_announcement,
     is_live_human_pickup_after_ivr,
+    is_recording_or_ai_objection,
     pcm16_to_wav_bytes,
     sanitize_option_a_line,
     strip_live_meta_tokens,
@@ -770,8 +771,20 @@ class BrowserMicLiveAdapter:
         agent_text_buf: list[str] = []
         shop_text_buf: list[str] = []
 
+        recording_opted_out = False
+
         async def flush_side_brain() -> None:
+            nonlocal recording_opted_out
             async with side_brain_lock:
+                if any(
+                    is_recording_or_ai_objection(t.text)
+                    for t in call.transcript
+                    if t.speaker == "shopkeeper"
+                ):
+                    recording_opted_out = True
+                    recorded_24k_pcm.clear()
+                    self._audio_store.pop((quest.quest_id, call.shop.shop_id), None)
+                    call.audio_url = None
                 decision = await evaluate_transcript_side_brain(
                     user_goal=quest.user_goal,
                     shop_name=call.shop.name,
@@ -781,8 +794,9 @@ class BrowserMicLiveAdapter:
                     client=client,
                 )
                 call.quote = decision_to_inr_quote(decision)
-                if decision.is_voicemail:
-                    call.outcome = CallOutcome.VOICEMAIL_SKIPPED
+                if decision.is_voicemail or recording_opted_out:
+                    if decision.is_voicemail:
+                        call.outcome = CallOutcome.VOICEMAIL_SKIPPED
                     hangup_event.set()
                 emit_state()
                 try:
@@ -832,7 +846,8 @@ class BrowserMicLiveAdapter:
                             mtype = msg.get("type")
                             if mtype == "audio_pcm16":
                                 pcm16_16k = base64.b64decode(msg["data"])
-                                recorded_24k_pcm.extend(_upsample_pcm16_16k_to_24k(pcm16_16k))
+                                if call.disclosure_delivered and not recording_opted_out:
+                                    recorded_24k_pcm.extend(_upsample_pcm16_16k_to_24k(pcm16_16k))
                                 await session.send_realtime_input(
                                     audio=types.Blob(
                                         data=pcm16_16k,
@@ -1023,7 +1038,16 @@ class BrowserMicLiveAdapter:
                 )
                 call.quote = decision_to_inr_quote(decision)
 
-            if recorded_24k_pcm:
+            if any(
+                is_recording_or_ai_objection(t.text)
+                for t in call.transcript
+                if t.speaker == "shopkeeper"
+            ):
+                recording_opted_out = True
+                recorded_24k_pcm.clear()
+                self._audio_store.pop((quest.quest_id, call.shop.shop_id), None)
+                call.audio_url = None
+            elif recorded_24k_pcm and call.disclosure_delivered and not recording_opted_out:
                 self._audio_store[(quest.quest_id, call.shop.shop_id)] = pcm16_to_wav_bytes(
                     bytes(recorded_24k_pcm), sample_rate=24000
                 )
@@ -1882,6 +1906,7 @@ class LiveIndiaPstnAdapter:
 
         agent_text_buf: list[str] = []
         shop_text_buf: list[str] = []
+        recording_opted_out = False
 
         async def schedule_polite_hangup(delay_sec: float = 2.2) -> None:
             await asyncio.sleep(delay_sec)
@@ -1899,7 +1924,8 @@ class LiveIndiaPstnAdapter:
                 if mix_comfort_bed
                 else audio_24k
             )
-            recorder.append_outbound(shaped_24k)
+            if call.disclosure_delivered and not recording_opted_out:
+                recorder.append_outbound(shaped_24k)
             if provider == CarrierProvider.TWILIO:
                 if stream_id:
                     ulaw_out = _pcm16_24k_to_ulaw_8k(shaped_24k)
@@ -2007,8 +2033,16 @@ class LiveIndiaPstnAdapter:
             emit_state()
 
         async def flush_side_brain() -> None:
-            nonlocal polite_close_ready
+            nonlocal polite_close_ready, recording_opted_out
             async with side_brain_lock:
+                if any(
+                    is_recording_or_ai_objection(t.text)
+                    for t in call.transcript
+                    if t.speaker == "shopkeeper"
+                ):
+                    recording_opted_out = True
+                    self._audio_store.pop((quest.quest_id, call.shop.shop_id), None)
+                    call.audio_url = None
                 decision = await evaluate_transcript_side_brain(
                     user_goal=quest.user_goal,
                     shop_name=call.shop.name,
@@ -2020,8 +2054,9 @@ class LiveIndiaPstnAdapter:
                 call.quote = decision_to_inr_quote(decision)
                 if decision.dtmf_digit:
                     await dispatch_ivr_dtmf(decision.dtmf_digit)
-                if decision.is_voicemail:
-                    call.outcome = CallOutcome.VOICEMAIL_SKIPPED
+                if decision.is_voicemail or recording_opted_out:
+                    if decision.is_voicemail:
+                        call.outcome = CallOutcome.VOICEMAIL_SKIPPED
                     hangup_event.set()
                     if call.twilio_call_sid:
                         asyncio.create_task(
@@ -2099,10 +2134,12 @@ class LiveIndiaPstnAdapter:
                         if (now_m - start_ts) > 0.20 and raw_rms >= 200.0:
                             inbound_voice_frames += 1
                             last_inbound_voice_ts = now_m
-                        # Preserve 100% raw audio in .wav recording, while gating far-field shop chatter for Gemini VAD
-                        recorder.append_inbound(
-                            _upsample_pcm16_16k_to_24k(pcm16_16k), now_ts=now_m
-                        )
+                        # Record inbound audio ONLY after AI + recording disclosure has been delivered
+                        # (`call.disclosure_delivered`) and never if the recipient objected (`recording_opted_out`).
+                        if call.disclosure_delivered and not recording_opted_out:
+                            recorder.append_inbound(
+                                _upsample_pcm16_16k_to_24k(pcm16_16k), now_ts=now_m
+                            )
                         gated_pcm16, eff_rms = gate_pstn_background_chatter(
                             pcm16_16k, noise_gate_state
                         )
@@ -2859,7 +2896,15 @@ class LiveIndiaPstnAdapter:
                 )
                 call.quote = decision_to_inr_quote(decision)
 
-            if recorder.has_audio():
+            if any(
+                is_recording_or_ai_objection(t.text)
+                for t in call.transcript
+                if t.speaker == "shopkeeper"
+            ):
+                recording_opted_out = True
+                self._audio_store.pop((quest.quest_id, call.shop.shop_id), None)
+                call.audio_url = None
+            elif recorder.has_audio() and call.disclosure_delivered and not recording_opted_out:
                 self._audio_store[(quest.quest_id, call.shop.shop_id)] = pcm16_to_wav_bytes(
                     recorder.render_pcm24(), sample_rate=24000
                 )

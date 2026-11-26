@@ -482,6 +482,11 @@
               aud.preload = 'none';
               aud.src = c.audio_url;
               leg.appendChild(aud);
+            } else if (!c.transcript || !c.transcript.length) {
+              const priv = document.createElement('div');
+              priv.className = 'leg-meta';
+              priv.textContent = '🔒 Transcript & WAV audio restricted to requesting caller / admin (24h auto-expiry)';
+              leg.appendChild(priv);
             }
             item.appendChild(leg);
           });

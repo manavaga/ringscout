@@ -2582,10 +2582,178 @@ def test_github_seo_star_gate_and_custom_gpt_privacy_openapi_schema(
         update_runtime_payment_config(gate_mode="off", star_gate_mode="off", free_daily_calls_per_client=5)
 
 
+def test_openai_public_launch_disclosure_privacy_and_24h_ttl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ringscout.models import QuestCreateRequest
+    from ringscout.server import BoundedAudioStore, QuestManager
+    from ringscout.voice_engine import (
+        build_agent_disclosure_opening,
+        build_thin_live_config,
+        heuristic_side_brain_fallback,
+        is_recording_or_ai_objection,
+    )
 
+    # 1. Proactive AI + Recording Disclosure in Turn 1 (English + Hinglish, with & without caller_name)
+    en_open = build_agent_disclosure_opening(
+        shop_name="CinCin BKC",
+        user_goal="Table for 4 tonight at 8:30 PM",
+        vocal_tone=VocalTone.POLITE_INDIAN_ENGLISH,
+        caller_name="Aarav",
+    )
+    assert "RingScout AI assistant" in en_open
+    assert "recorded call" in en_open
+    assert "for Aarav" in en_open
+    assert "Aarav here" not in en_open
 
+    hi_open = build_agent_disclosure_opening(
+        shop_name="Prakash Medicals",
+        user_goal="Augmentin 625 strip price",
+        vocal_tone=VocalTone.CONVERSATIONAL_HINGLISH,
+        caller_name="Aarav",
+    )
+    assert "RingScout AI assistant" in hi_open
+    assert "recorded call" in hi_open
+    assert "Aarav ke liye" in hi_open
+    assert "Aarav bol raha" not in hi_open
 
+    cfg = build_thin_live_config(
+        shop_name="CinCin BKC",
+        locality="Bandra Kurla Complex",
+        user_goal="Table for 4 tonight",
+        vocal_tone=VocalTone.POLITE_INDIAN_ENGLISH,
+        is_live_pstn=True,
+        caller_name="Aarav",
+    )
+    sys_prompt = cfg.system_instruction.parts[0].text
+    assert "MANDATORY PROACTIVE DISCLOSURE IN TURN 1" in sys_prompt
+    assert "RingScout AI assistant on a recorded call for Aarav" in sys_prompt
 
+    # Objection / opt-out detection immediately triggers hangup
+    assert is_recording_or_ai_objection("Please don't record this call")
+    assert is_recording_or_ai_objection("Bhai call record mat karo")
+    obj_dec = heuristic_side_brain_fallback(
+        [TranscriptTurn(speaker="shopkeeper", text="Please do not record our line", timestamp_sec=2.0)]
+    )
+    assert obj_dec.should_hangup is True
 
+    # 2. Public Dashboard & Endpoint Privacy (transcripts, caller_name, and WAV links hidden from other visitors)
+    monkeypatch.setenv("RINGSCOUT_PUBLIC_CONSUMER_ACCESS", "1")
+    monkeypatch.setenv("RINGSCOUT_PASSCODE", "admin-secret-555")
+    app = create_app(synthesize_audio=False, require_provenance=False)
+    client = TestClient(app)
+
+    create_res = client.post(
+        "/api/quests",
+        json={
+            "user_goal": "Private diabetes prescription strip check",
+            "caller_name": "Rohan",
+            "place_category": "pharmacy",
+            "city": "Mumbai",
+            "locality": "Bandra West",
+            "mode": "hinglish_swarm",
+            "shops": [
+                {
+                    "shop_id": "shop_1",
+                    "name": "Bandra Chemist",
+                    "phone_e164": "+919892025216",
+                    "phone_display": "+91 98920 25216",
+                    "address": "Hill Road, Bandra West",
+                }
+            ],
+        },
+    )
+    assert create_res.status_code == 200
+    q_id = create_res.json()["quest"]["quest_id"]
+    q_tok = create_res.json()["quest_token"]
+
+    # Inject a sample transcript + WAV clip to verify redaction vs authorized access
+    import time as _time
+    _time.sleep(0.15)
+    # Fetch as owner -> sees transcript, caller_name, and signed audio URL once clip exists
+    owner_before = client.get(f"/api/quests/{q_id}", headers={"X-Quest-Token": q_tok}).json()
+    assert owner_before["quest"]["caller_name"] == "Rohan"
+
+    # Public /api/dashboard/summary & /api/tracker/endpoints & anonymous /api/quests/{q_id} MUST redact!
+    pub_dash = client.get("/api/dashboard/summary").json()
+    pub_q = next(q for q in pub_dash["quests"] if q["quest_id"].endswith(q_id[-4:]))
+    assert "prescription" not in pub_q["user_goal"].lower()
+    assert pub_q["calls"][0]["transcript"] == []
+    assert pub_q["calls"][0]["audio_url"] is None
+
+    pub_tracker = client.get("/api/tracker/endpoints").json()
+    if pub_tracker.get("live_quests"):
+        tq = pub_tracker["live_quests"][0]
+        assert tq["calls"][0]["transcript"] == []
+        assert tq["calls"][0]["audio_url"] is None
+
+    anon_quest = client.get(f"/api/quests/{q_id}").json()
+    assert anon_quest["quest"]["caller_name"] == ""
+    assert anon_quest["quest"]["calls"]["shop_1"]["transcript"] == []
+    assert anon_quest["quest"]["calls"]["shop_1"]["audio_url"] is None
+
+    # Admin WITH X-RingScout-Passcode still gets full visibility
+    adm_dash = client.get("/api/dashboard/summary", headers={"X-RingScout-Passcode": "admin-secret-555"}).json()
+    adm_q = next(q for q in adm_dash["quests"] if q["quest_id"] == q_id)
+    assert "prescription" in adm_q["user_goal"].lower()
+
+    # Self-service deletion via X-Quest-Token
+    assert client.delete(f"/api/quests/{q_id}").status_code == 403
+    del_ok = client.delete(f"/api/quests/{q_id}", headers={"X-Quest-Token": q_tok})
+    assert del_ok.status_code == 200
+    assert client.get(f"/api/quests/{q_id}", headers={"X-Quest-Token": q_tok}).status_code == 404
+
+    # 3. Deterministic 24-Hour TTL Auto-Expiry on BoundedAudioStore & QuestManager
+    store = BoundedAudioStore(max_entries=64, ttl_seconds=86400.0)
+    store[("q_ttl", "s1")] = b"RIFF_WAV_BYTES"
+    assert store.get(("q_ttl", "s1")) == b"RIFF_WAV_BYTES"
+    store._created_at[("q_ttl", "s1")] -= 86401.0
+    assert store.get(("q_ttl", "s1")) is None
+
+    qm = QuestManager(synthesize_audio=False, require_provenance=False, retention_ttl_seconds=86400.0)
+    q_exp = qm.create_quest(
+        QuestCreateRequest(
+            user_goal="Table tonight",
+            shops=[
+                IndianShopTarget(
+                    shop_id="s1",
+                    name="Cafe",
+                    phone_e164="+919892025216",
+                    phone_display="+91 98920 25216",
+                    address="Bandra",
+                )
+            ],
+        )
+    )
+    qm.audio_store[(q_exp.quest_id, "s1")] = b"RIFF_WAV"
+    q_exp.created_at_epoch -= 86405.0
+    qm.audio_store._created_at[(q_exp.quest_id, "s1")] -= 86405.0
+    purged = qm.purge_expired_data()
+    assert purged["expired_quests"] == 1
+    assert q_exp.quest_id not in qm.quests
+    assert qm.audio_store.get((q_exp.quest_id, "s1")) is None
+
+    # Policy endpoints & health metadata
+    assert "24 hours" in client.get("/privacy").text
+    assert "India" in client.get("/terms").text
+    hlth = client.get("/api/health").json()
+    assert hlth["retention_policy"]["call_audio_and_transcripts_ttl_seconds"] == 86400
+    assert hlth["retention_policy"]["operational_logs_retention_days"] == 30
+
+    # 4. Judge P1/P2 checks: ChatGPT Referer path normalization, bare 'do not call', & A2A_TASK_STORE 24h TTL
+    assert is_recording_or_ai_objection("Please do not call again")
+    from ringscout.a2a_gateway import BoundedTaskStore
+    tstore = BoundedTaskStore(max_entries=16, ttl_seconds=86400.0)
+    tstore["t_1"] = {"id": "t_1", "metadata": {"questId": "q_demo"}}
+    assert tstore.pop_by_quest_id("q_demo") == 1
+    assert tstore.get("t_1") is None
+    tstore["t_2"] = {"id": "t_2", "metadata": {"questId": "q_old"}}
+    tstore._created_at["t_2"] -= 86402.0
+    assert tstore.get("t_2") is None
+
+    client.get("/api/quests/q_secret9999", headers={"Referer": "https://chatgpt.com/"})
+    adm_summary = client.get("/api/dashboard/summary", headers={"X-RingScout-Passcode": "admin-secret-555"}).json()
+    for ev in adm_summary["traffic"]["recent_events"]:
+        assert "q_secret9999" not in ev["path"]
 
 
