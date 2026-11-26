@@ -214,6 +214,23 @@ class EndpointRequestTracker:
         self._remote_relay_snapshot: dict[str, Any] | None = None
         self._lock = asyncio.Lock()
 
+    def purge_expired_in_memory(
+        self, now_epoch: float | None = None, ttl_seconds: float = 86400.0
+    ) -> int:
+        """Purge in-memory HTTP telemetry and MCP tool summaries older than 24 hours."""
+        now = float(time.time() if now_epoch is None else now_epoch)
+        removed = 0
+        while self.live_records and (now - float(self.live_records[0].get("epoch") or now)) >= ttl_seconds:
+            self.live_records.popleft()
+            removed += 1
+        while (
+            self.live_mcp_tool_invocations
+            and (now - float(self.live_mcp_tool_invocations[-1].get("epoch") or now)) >= ttl_seconds
+        ):
+            self.live_mcp_tool_invocations.pop()
+            removed += 1
+        return removed
+
     def record_http_hit(
         self,
         *,
@@ -228,6 +245,7 @@ class EndpointRequestTracker:
         if norm_path in ("/favicon.ico",):
             return
         now = time.time()
+        self.purge_expired_in_memory(now)
         agent_label, agent_group, agent_desc = classify_user_agent(user_agent)
         self.live_records.append(
             {
@@ -251,7 +269,9 @@ class EndpointRequestTracker:
     def record_mcp_rpc(self, rpc_body: Any, user_agent: str = "") -> None:
         items = rpc_body if isinstance(rpc_body, list) else [rpc_body]
         ag_lbl, _, _ = classify_user_agent(user_agent)
-        now_iso = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        now = time.time()
+        self.purge_expired_in_memory(now)
+        now_iso = datetime.datetime.fromtimestamp(now, tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         for item in items:
             if not isinstance(item, dict):
                 continue
@@ -262,14 +282,22 @@ class EndpointRequestTracker:
                 params = item.get("params") if isinstance(item.get("params"), dict) else {}
                 tname = str(params.get("name") or "unknown")
                 args = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
+                cat_lbl = str(args.get("place_category") or args.get("category") or "").strip()
+                city_lbl = str(args.get("city") or "").strip()
+                safe_summary = (
+                    f"{cat_lbl or 'local'} check ({city_lbl or 'India'})"
+                    if (cat_lbl or city_lbl)
+                    else "Read-only status check"
+                )[:64]
                 self.mcp_rpc_methods[f"tools/call ({tname})"] += 1
                 self.live_mcp_tool_invocations.appendleft(
                     {
+                        "epoch": now,
                         "ts": now_iso,
                         "protocol": "MCP tools/call",
                         "tool": tname,
                         "caller": ag_lbl,
-                        "summary": str(args.get("item_question") or args.get("city") or "Read-only status check")[:90],
+                        "summary": safe_summary,
                     }
                 )
             else:

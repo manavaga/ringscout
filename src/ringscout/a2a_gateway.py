@@ -106,21 +106,51 @@ class PaymentSettlement:
 
 
 class BoundedTaskStore(OrderedDict[str, dict[str, Any]]):
-    """Bounded in-memory A2A Task store for `tasks/get` and `tasks/cancel`."""
+    """Bounded in-memory A2A Task store with hard 24-hour TTL auto-expiry (`86,400s`)."""
 
-    def __init__(self, max_entries: int = 128) -> None:
+    def __init__(self, max_entries: int = 128, ttl_seconds: float = 86400.0) -> None:
         super().__init__()
         self._max_entries = max_entries
+        self._ttl_seconds = float(ttl_seconds)
+        self._created_at: dict[str, float] = {}
+
+    def purge_expired(self, now_epoch: float | None = None) -> int:
+        now = float(time.time() if now_epoch is None else now_epoch)
+        expired = [k for k, ts in list(self._created_at.items()) if (now - ts) >= self._ttl_seconds]
+        for k in expired:
+            self._created_at.pop(k, None)
+            super().pop(k, None)
+        return len(expired)
+
+    def pop_by_quest_id(self, quest_id: str) -> int:
+        if not quest_id:
+            return 0
+        matched = [
+            tid
+            for tid, task_obj in list(self.items())
+            if str((task_obj.get("metadata") or {}).get("questId") or "") == quest_id
+        ]
+        for tid in matched:
+            self._created_at.pop(tid, None)
+            super().pop(tid, None)
+        return len(matched)
 
     def __setitem__(self, key: str, value: dict[str, Any]) -> None:
+        self.purge_expired()
         if key in self:
             self.move_to_end(key)
         super().__setitem__(key, value)
+        self._created_at[key] = time.time()
         while len(self) > self._max_entries:
-            self.popitem(last=False)
+            evicted_key, _ = self.popitem(last=False)
+            self._created_at.pop(evicted_key, None)
+
+    def get(self, key: str, default: Any = None) -> Any:  # type: ignore[override]
+        self.purge_expired()
+        return super().get(key, default)
 
 
-A2A_TASK_STORE = BoundedTaskStore(max_entries=128)
+A2A_TASK_STORE = BoundedTaskStore(max_entries=128, ttl_seconds=86400.0)
 SPENT_X402_NONCES: OrderedDict[str, float] = OrderedDict()
 
 
@@ -1564,7 +1594,7 @@ _SCOUT_MCP_INPUT_SCHEMA: dict[str, Any] = {
         },
         "caller_name": {
             "type": "string",
-            "description": "Optional caller first name (e.g. 'Rahul') used as a polite human confidence marker.",
+            "description": "Optional requester first name (disclosed transparently as 'RingScout AI assistant calling for <Name>', never impersonated).",
             "default": "",
         },
         "github_username": {
@@ -2251,7 +2281,7 @@ def build_openapi_actions_spec(base_url: str) -> dict[str, Any]:
                                         "caller_name": {
                                             "type": "string",
                                             "default": "",
-                                            "description": "Optional caller first name for natural greeting.",
+                                            "description": "Optional requester first name (disclosed transparently as 'RingScout AI assistant calling for <Name>', never impersonated).",
                                         },
                                         "github_username": {
                                             "type": "string",
@@ -2567,6 +2597,6 @@ def build_ai_plugin_manifest(base_url: str) -> dict[str, Any]:
             "url": f"{clean}/openapi-actions.json",
             "is_user_authenticated": False,
         },
-        "contact_email": "manavagarwal@users.noreply.github.com",
+        "contact_email": "agarwalmanav91@gmail.com",
         "legal_info_url": f"{clean}/privacy",
     }

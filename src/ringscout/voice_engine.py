@@ -488,22 +488,26 @@ def _inject_confidence_markers(
     vocal_tone: VocalTone,
     is_female_voice: bool = False,
 ) -> str:
-    """Inject Street/Landmark + Caller First Name confidence markers into Turn 1 greeting."""
+    """Inject proactive AI + recording disclosure, street landmark, and optional non-impersonating 'for <Name>' context into Turn 1."""
     brand = spoken_shop_brand(shop_name)
-    if not brand:
-        return opening_line
-    street = spoken_street_landmark(shop_address, locality)
+    street = spoken_street_landmark(shop_address, locality) if brand else ""
     safe_caller = re.sub(r"[^A-Za-z ]", "", (caller_name or "").strip())[:24].strip()
 
     if vocal_tone == VocalTone.POLITE_INDIAN_ENGLISH:
-        loc_tag = f" on {street}" if street and street.lower() not in brand.lower() else ""
-        name_tag = f"{safe_caller} here — " if safe_caller else ""
-        prefix = f"Hi hello, {brand}{loc_tag}? {name_tag}"
+        for_tag = f" for {safe_caller}" if safe_caller else ""
+        if brand:
+            loc_tag = f" on {street}" if street and street.lower() not in brand.lower() else ""
+            prefix = f"Hi hello, {brand}{loc_tag}? RingScout AI assistant on a recorded call{for_tag} — "
+        else:
+            prefix = f"Hi hello — RingScout AI assistant on a recorded call{for_tag} — "
     else:
-        loc_tag = f" {street} wala" if street and street.lower() not in brand.lower() else ""
         verb_bol = "bol rahi hoon" if is_female_voice else "bol raha hoon"
-        name_tag = f"{safe_caller} {verb_bol} — " if safe_caller else ""
-        prefix = f"Haan hello, {brand}{loc_tag}? {name_tag}"
+        for_tag = f"{safe_caller} ke liye " if safe_caller else ""
+        if brand:
+            loc_tag = f" {street} wala" if street and street.lower() not in brand.lower() else ""
+            prefix = f"Haan hello, {brand}{loc_tag}? {for_tag}RingScout AI assistant {verb_bol} recorded call pe — "
+        else:
+            prefix = f"Haan hello — {for_tag}RingScout AI assistant {verb_bol} recorded call pe — "
 
     greeting_re = re.compile(r"^(?:haan\s+hello|hi\s*,?\s*hello|hello)\b\s*[—\-:,]*\s*", re.IGNORECASE)
     if greeting_re.search(opening_line):
@@ -521,7 +525,7 @@ def build_agent_disclosure_opening(
     locality: str = "",
     caller_name: str = "",
 ) -> str:
-    """Return natural, human-paced Turn 1 opening with street-landmark & caller-name confidence markers."""
+    """Return Turn 1 opening that proactively discloses RingScout AI assistant + call recording without impersonating a human."""
     plan = call_plan or heuristic_conversational_call_plan(user_goal, vocal_tone)
     return _inject_confidence_markers(
         opening_line=plan.turn1_availability_question,
@@ -616,16 +620,16 @@ def build_thin_live_config(
     )
 
     system_prompt = (
-        f"You are calling '{shop_name}' in {locality} to check live availability and walk-in ₹ price for: {clean_goal}\n"
-        f"CONVERSATION PLAYBOOK (SOUND 100% LIKE A REAL LOCAL BUYER, NEVER A SALES BOT):\n"
-        f"1. ANTI-SPAM OPENING (<2.5s): NEVER say 'Hello ji, namaste', 'Good afternoon sir', or 'for a customer'. Open casually:\n"
-        f'   - Turn 1 (Availability first): "{opening_line}"\n'
+        f"You are RingScout AI assistant calling '{shop_name}' in {locality} on a recorded line to check live availability and walk-in ₹ price for: {clean_goal}\n"
+        f"CONVERSATION PLAYBOOK (PROACTIVE AI & RECORDING DISCLOSURE + NATURAL INDIAN CADENCE):\n"
+        f"1. MANDATORY PROACTIVE DISCLOSURE IN TURN 1 (<3.5s): Always announce upfront in your very first human turn that you are 'RingScout AI assistant' on a 'recorded call' before asking availability. NEVER say 'Hello ji, namaste', 'Good afternoon sir', or 'bhaiya', and NEVER impersonate a human person:\n"
+        f'   - Turn 1 (Disclosure + Availability): "{opening_line}"\n'
         f"2. PRICE FOLLOW-UP (<2s): Once they confirm it's available without mentioning price, ask:\n"
         f'   - Turn 2: "{plan.turn2_price_question}" (Skip Turn 2 if they already gave the ₹ price or said it is out of stock!).\n'
         f"3. QUICK NATURAL CLOSE (<1.5s): Once you have availability + ₹ price (or confirmed out-of-stock / next slot), close warmly and stop:\n"
         f'   - Turn 3: "{plan.turn3_closing}"\n'
         f"4. NATIVE INDIAN VOICE & LOCALE (`language_code={lang_code}`, `vocal_tone={vocal_tone.value}`, `voice={resolved_voice}`): {tone_guidance}\n"
-        f"5. HONESTY IF ASKED WHO IS CALLING: If they explicitly ask who is speaking, say 'Checking from RingScout AI assistant for walk-in availability and rate.' Never invent fake names or phone numbers.{pstn_extra}"
+        f"5. RESPECT RECORDING / AI OBJECTIONS IMMEDIATELY: Never invent fake names or phone numbers. If the recipient objects to call recording or AI assistants or asks to stop/not be called ('don't record', 'no AI calls', 'record mat karo', 'do not call'), immediately say 'Understood, sorry to disturb you — thank you' and end the call.{pstn_extra}"
     )
 
     # Thin Live Socket invariant: `tools` MUST remain unset / None on LiveConnectConfig.
@@ -1192,6 +1196,39 @@ def _default_availability_label(
     return "Checking / Partial"
 
 
+_RECORDING_OR_AI_OBJECTION_PATTERNS: tuple[str, ...] = (
+    "don't record",
+    "do not record",
+    "dont record",
+    "stop recording",
+    "no recording",
+    "without recording",
+    "not comfortable being recorded",
+    "don't want to be recorded",
+    "do not want to be recorded",
+    "record mat karo",
+    "recording mat karo",
+    "recording band karo",
+    "bina recording",
+    "mat record",
+    "no ai call",
+    "no automated call",
+    "don't call",
+    "do not call",
+    "dont call",
+    "stop calling",
+    "remove our number",
+)
+
+
+def is_recording_or_ai_objection(utterance: str) -> bool:
+    """Detect recipient objection to call recording or automated AI calls (English, Hinglish, Hindi)."""
+    low = (utterance or "").strip().lower()
+    if not low:
+        return False
+    return any(pat in low for pat in _RECORDING_OR_AI_OBJECTION_PATTERNS)
+
+
 def heuristic_side_brain_fallback(
     transcript: list[TranscriptTurn],
     preferred_tone: VocalTone = VocalTone.CONVERSATIONAL_HINGLISH,
@@ -1202,6 +1239,17 @@ def heuristic_side_brain_fallback(
     cat = _infer_category_from_goal(user_goal, place_category)
     shop_lines = " ".join(t.text for t in transcript if t.speaker == "shopkeeper")
     lower = shop_lines.lower()
+
+    if is_recording_or_ai_objection(shop_lines):
+        return SideBrainDecision(
+            vocal_tone=preferred_tone,
+            in_stock=None,
+            availability_label="Declined Recording / Call",
+            is_voicemail=False,
+            should_hangup=True,
+            summary_notes="Recipient declined recording or automated call; ended immediately.",
+            key_insights=["Call ended immediately at recipient request."],
+        )
 
     is_voicemail = any(
         kw in lower
@@ -1316,6 +1364,8 @@ async def evaluate_transcript_side_brain(
         place_category=cat,
     )
     if not transcript:
+        return fallback
+    if any(is_recording_or_ai_objection(t.text) for t in transcript if t.speaker == "shopkeeper"):
         return fallback
 
     convo_text = "\n".join(

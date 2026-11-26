@@ -30,6 +30,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from pydantic import BaseModel, Field
 
 from ringscout.a2a_gateway import (
+    A2A_TASK_STORE,
     BASE_SEPOLIA_CAIP2_NETWORK,
     PaymentRequiredError,
     build_402_challenge,
@@ -86,7 +87,7 @@ from ringscout.models import (
     ShopCallState,
     VocalTone,
 )
-from ringscout.request_tracker import EndpointRequestTracker
+from ringscout.request_tracker import EndpointRequestTracker, normalize_endpoint_path
 from ringscout.secrets_manager import get_secret
 from ringscout.stripe_protocol import (
     create_signed_demo_stripe_mpp_credential,
@@ -301,10 +302,14 @@ class TrafficAnalyticsTracker:
             self.page_views["human_quests_started"] += 1
 
         if bot_label or ref_label or proto_label or path in ("/", "/developers"):
+            now_ev = time.time()
+            self.purge_expired(now_ev)
+            safe_path = normalize_endpoint_path(path)
             ev = {
-                "ts": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+                "epoch": now_ev,
+                "ts": datetime.datetime.fromtimestamp(now_ev, tz=datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
                 "method": request.method,
-                "path": path,
+                "path": safe_path,
                 "status": status_code,
                 "bot": bot_label,
                 "referral": ref_label,
@@ -313,9 +318,19 @@ class TrafficAnalyticsTracker:
             }
             self.recent_events.appendleft(ev)
             if bot_label or ref_label or proto_label:
-                logger.info("RING_ORGANIC_TELEMETRY %s", json.dumps(ev, separators=(",", ":")))
+                log_ev = {k: v for k, v in ev.items() if k != "epoch"}
+                logger.info("RING_ORGANIC_TELEMETRY %s", json.dumps(log_ev, separators=(",", ":")))
+
+    def purge_expired(self, now_epoch: float | None = None, ttl_seconds: float = 86400.0) -> int:
+        now = float(time.time() if now_epoch is None else now_epoch)
+        removed = 0
+        while self.recent_events and (now - float(self.recent_events[-1].get("epoch") or now)) >= ttl_seconds:
+            self.recent_events.pop()
+            removed += 1
+        return removed
 
     def snapshot(self) -> dict[str, Any]:
+        self.purge_expired()
         return {
             "totals": {
                 "ai_bot_crawls": sum(self.ai_bot_hits.values()),
@@ -328,7 +343,9 @@ class TrafficAnalyticsTracker:
             "ai_bots_by_agent": dict(self.ai_bot_hits.most_common(15)),
             "referrals_by_source": dict(self.ai_referrals.most_common(15)),
             "protocol_activity": dict(self.protocol_calls.most_common(15)),
-            "recent_events": list(self.recent_events)[:35],
+            "recent_events": [
+                {k: v for k, v in ev.items() if k != "epoch"} for ev in list(self.recent_events)[:35]
+            ],
         }
 
 
@@ -475,19 +492,70 @@ async def _parse_webhook_body(request: Request) -> dict[str, Any]:
     return dict(parse_qsl(text, keep_blank_values=True))
 
 
-class BoundedAudioStore(OrderedDict[tuple[str, str], bytes]):
-    """Bounded in-memory WAV store preventing unbounded RAM growth."""
+CALL_DATA_RETENTION_TTL_SEC = int(os.environ.get("RINGSCOUT_RETENTION_TTL_SECONDS", "86400"))
+OPERATIONAL_LOG_RETENTION_DAYS = 30
 
-    def __init__(self, max_entries: int = 64) -> None:
+
+class BoundedAudioStore(OrderedDict[tuple[str, str], bytes]):
+    """Bounded in-memory WAV store with hard 24-hour TTL auto-expiry and max-clip cap."""
+
+    def __init__(
+        self, max_entries: int = 64, ttl_seconds: float = float(CALL_DATA_RETENTION_TTL_SEC)
+    ) -> None:
         super().__init__()
         self._max_entries = max_entries
+        self._ttl_seconds = float(ttl_seconds)
+        self._created_at: dict[tuple[str, str], float] = {}
+
+    def purge_expired(self, now_epoch: float | None = None) -> int:
+        now = float(time.time() if now_epoch is None else now_epoch)
+        expired_keys = [
+            k for k, ts in list(self._created_at.items()) if (now - ts) >= self._ttl_seconds
+        ]
+        for k in expired_keys:
+            self._created_at.pop(k, None)
+            super().pop(k, None)
+        return len(expired_keys)
 
     def __setitem__(self, key: tuple[str, str], value: bytes) -> None:
+        self.purge_expired()
         if key in self:
             self.move_to_end(key)
         super().__setitem__(key, value)
+        self._created_at[key] = time.time()
         while len(self) > self._max_entries:
-            self.popitem(last=False)
+            evicted_key, _ = self.popitem(last=False)
+            self._created_at.pop(evicted_key, None)
+
+    def get(self, key: tuple[str, str], default: Any = None) -> Any:  # type: ignore[override]
+        self.purge_expired()
+        return super().get(key, default)
+
+    def __getitem__(self, key: tuple[str, str]) -> bytes:
+        self.purge_expired()
+        return super().__getitem__(key)
+
+    def __contains__(self, key: object) -> bool:
+        self.purge_expired()
+        return super().__contains__(key)
+
+    def pop(self, key: tuple[str, str], *args: Any) -> Any:  # type: ignore[override]
+        self._created_at.pop(key, None)
+        return super().pop(key, *args)
+
+
+def _public_safe_quote_dict(quote_dump: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Strip free-text conversational snippets from public aggregate quote views."""
+    if not quote_dump:
+        return None
+    return {
+        "in_stock": quote_dump.get("in_stock"),
+        "availability_label": quote_dump.get("availability_label"),
+        "price_inr": quote_dump.get("price_inr"),
+        "eta_or_slot": quote_dump.get("eta_or_slot"),
+        "notes": "",
+        "key_insights": [],
+    }
 
 
 def _quest_payload(
@@ -499,6 +567,8 @@ def _quest_payload(
     q_dump = quest.model_dump()
     ranked_dump = [c.model_dump() for c in quest.ranked_quotes()]
     if mask_phones:
+        q_dump["caller_name"] = ""
+        q_dump["user_goal"] = f"{quest.place_category.value} availability check"
         for s in q_dump.get("shops", []):
             s["phone_e164"] = ""
             s["phone_display"] = _mask_phone_for_public_dashboard(str(s.get("phone_display") or ""))
@@ -508,12 +578,31 @@ def _quest_payload(
                 c["shop"]["phone_display"] = _mask_phone_for_public_dashboard(
                     str(c["shop"].get("phone_display") or "")
                 )
+            c["transcript"] = []
+            c["audio_url"] = None
+            c["quote"] = _public_safe_quote_dict(c.get("quote"))
         for c in ranked_dump:
             if "shop" in c:
                 c["shop"]["phone_e164"] = ""
                 c["shop"]["phone_display"] = _mask_phone_for_public_dashboard(
                     str(c["shop"].get("phone_display") or "")
                 )
+            c["transcript"] = []
+            c["audio_url"] = None
+            c["quote"] = _public_safe_quote_dict(c.get("quote"))
+    else:
+        for c in (q_dump.get("calls") or {}).values():
+            raw_aud = c.get("audio_url")
+            shop_id = (c.get("shop") or {}).get("shop_id") or ""
+            if raw_aud and "sig=" not in str(raw_aud) and shop_id:
+                sig = LiveIndiaPstnAdapter.sign_pstn_token("audio", quest.quest_id, shop_id)
+                c["audio_url"] = f"{raw_aud}?sig={sig}"
+        for c in ranked_dump:
+            raw_aud = c.get("audio_url")
+            shop_id = (c.get("shop") or {}).get("shop_id") or ""
+            if raw_aud and "sig=" not in str(raw_aud) and shop_id:
+                sig = LiveIndiaPstnAdapter.sign_pstn_token("audio", quest.quest_id, shop_id)
+                c["audio_url"] = f"{raw_aud}?sig={sig}"
     out: dict[str, Any] = {
         "quest": q_dump,
         "ranked_quotes": ranked_dump,
@@ -591,11 +680,21 @@ def _build_llms_txt(base_url: str, full: bool = False) -> str:
 class QuestManager:
     """In-memory state, Google Maps phone provenance, SSE fan-out, panic-stop, and WAV store."""
 
-    def __init__(self, synthesize_audio: bool = True, require_provenance: bool = True) -> None:
+    def __init__(
+        self,
+        synthesize_audio: bool = True,
+        require_provenance: bool = True,
+        retention_ttl_seconds: float = float(CALL_DATA_RETENTION_TTL_SEC),
+        max_quests: int = 256,
+    ) -> None:
         self.quests: dict[str, QuestSession] = {}
         self.stop_events: dict[str, asyncio.Event] = {}
         self.subscribers: dict[str, set[asyncio.Queue[dict[str, Any]]]] = {}
-        self.audio_store = BoundedAudioStore(max_entries=64)
+        self.retention_ttl_seconds = float(retention_ttl_seconds)
+        self.max_quests = max_quests
+        self.audio_store = BoundedAudioStore(
+            max_entries=64, ttl_seconds=self.retention_ttl_seconds
+        )
         self.verified_google_phones: set[str] = set()
         self.require_provenance = require_provenance
         self.swarm_adapter = HinglishSwarmAdapter(
@@ -608,6 +707,37 @@ class QuestManager:
         if persisted_cfg is not None:
             self.pstn_adapter.set_runtime_config(persisted_cfg)
         self.twilio_adapter = self.pstn_adapter
+
+    def purge_expired_data(self, now_epoch: float | None = None) -> dict[str, int]:
+        """Automatically purge quests, transcripts, caller names, A2A tasks, and WAV clips older than 24 hours."""
+        now = float(time.time() if now_epoch is None else now_epoch)
+        expired_audio = self.audio_store.purge_expired(now)
+        expired_a2a = A2A_TASK_STORE.purge_expired(now)
+        expired_quests = 0
+        for qid, q in list(self.quests.items()):
+            if (now - float(q.created_at_epoch)) >= self.retention_ttl_seconds:
+                self._evict_quest(qid, q)
+                expired_quests += 1
+        while len(self.quests) > self.max_quests:
+            oldest_qid = next(iter(self.quests))
+            oldest_q = self.quests[oldest_qid]
+            self._evict_quest(oldest_qid, oldest_q)
+            expired_quests += 1
+        return {
+            "expired_quests": expired_quests,
+            "expired_audio_clips": expired_audio,
+            "expired_a2a_tasks": expired_a2a,
+        }
+
+    def _evict_quest(self, qid: str, q: QuestSession) -> None:
+        for sid in list(q.calls.keys()):
+            self.audio_store.pop((qid, sid), None)
+        A2A_TASK_STORE.pop_by_quest_id(qid)
+        ev = self.stop_events.pop(qid, None)
+        if ev:
+            ev.set()
+        self.subscribers.pop(qid, None)
+        self.quests.pop(qid, None)
 
     def register_discovered_shops(self, resp: DiscoverResponse) -> None:
         for shop in resp.shops:
@@ -626,6 +756,7 @@ class QuestManager:
                 pass
 
     def create_quest(self, req: QuestCreateRequest) -> QuestSession:
+        self.purge_expired_data()
         quest_id = f"q_{uuid.uuid4().hex[:10]}"
         validated_shops = []
         calls: dict[str, ShopCallState] = {}
@@ -691,6 +822,7 @@ class QuestManager:
 
     def create_self_test_quest(self, req: SelfTestCallRequest) -> QuestSession:
         """Create an isolated 1-call LIVE_PSTN quest to ring the operator's own +91 mobile."""
+        self.purge_expired_data()
         e164, display, reason = normalize_indian_phone(req.my_phone)
         if reason != "ok" or not e164 or not display:
             raise HTTPException(
@@ -940,7 +1072,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
 
     @app.get("/privacy", include_in_schema=False)
     async def privacy_policy_page(request: Request) -> HTMLResponse:
-        """Public Privacy & AI Voice Disclosure Policy required by OpenAI GPT Store & Anthropic Connectors."""
+        """Public Privacy, Data Retention & AI Voice Disclosure Policy (Governing Law: India)."""
         base_url = _derive_public_base_url(request, manager.pstn_adapter).rstrip("/")
         html = f"""<!doctype html>
 <html lang="en">
@@ -961,23 +1093,31 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
 <body>
   <main>
     <h1>RingScout Privacy &amp; Responsible Voice Calling Policy</h1>
-    <p><strong>Effective Date:</strong> November 25, 2026 &middot; <strong>Open-Source Repository:</strong> <a href="https://github.com/manavaga/ringscout">github.com/manavaga/ringscout</a></p>
-    <h2>1. Purpose &amp; Public Business Provenance</h2>
-    <p>RingScout helps users and AI assistants (ChatGPT, Claude, Google Gemini, MCP, and A2A clients) check real-time availability, wait times, and rates at open public businesses listed on Google Maps. RingScout strictly blocks dialing unlisted personal phone numbers and 1800 toll-free numbers.</p>
-    <h2>2. Data Processed</h2>
+    <p><strong>Last Updated:</strong> November 26, 2026 &middot; <strong>Governing Law:</strong> India &middot; <strong>Repository &amp; Full Policies:</strong> <a href="https://github.com/manavaga/ringscout">github.com/manavaga/ringscout</a></p>
+    <h2>1. Proactive AI &amp; Recording Disclosure</h2>
+    <p>On every outbound call, RingScout proactively identifies itself upfront as the <strong>RingScout AI assistant</strong> calling on a <strong>recorded line</strong> (never impersonating a human person). Inbound recipient audio recording begins only after this disclosure starts, and if a recipient objects to recording or automated calls, RingScout ends the call immediately and discards any audio buffer.</p>
+    <h2>2. Public Business Provenance</h2>
+    <p>RingScout helps users and AI assistants (ChatGPT, Claude, Google Gemini, MCP, and Google A2A clients) check real-time availability, wait times, and rates at open public businesses in India listed on Google Maps. RingScout blocks dialing unlisted personal phone numbers and 1800 toll-free numbers.</p>
+    <h2>3. Access Controls &amp; Public Dashboard Privacy</h2>
+    <p>Public dashboard and analytics views expose only non-sensitive aggregate telemetry and masked business phone numbers. Call transcripts, caller names, and signed 24kHz WAV audio clips are restricted strictly to the session/caller that initiated the request (via capability token) and the service administrator.</p>
+    <h2>4. Predictable Retention &amp; Deletion Schedule</h2>
     <ul>
-      <li><strong>Search &amp; Inquiry Inputs:</strong> City, neighbourhood, place category, optional first name, and availability question sent by the user or AI assistant.</li>
-      <li><strong>Call Transcripts &amp; Ephemeral Audio Proof:</strong> Short business-inquiry transcripts and signed 24kHz WAV verification clips stored in bounded ephemeral memory (`max 64` recent clips, not sold or shared with third-party advertisers).</li>
-      <li><strong>Abuse Prevention:</strong> Hashed IP fingerprints and User-Agent headers used solely to enforce daily free-tier rate limits and block automated bot spam.</li>
+      <li><strong>Call Audio, Transcripts &amp; Quest Records (24-Hour Expiry):</strong> Held only in bounded application memory (max 64 audio clips / 256 quests) and automatically purged after <strong>24 hours</strong> (or earlier on instance restart or recipient opt-out).</li>
+      <li><strong>Operational &amp; Request Logs (30-Day Retention):</strong> In-memory request counters expire within 24 hours; Google Cloud Run request logs in the verified <code>_Default</code> Cloud Logging bucket are retained for <strong>30 days</strong> and then automatically deleted by Google Cloud.</li>
     </ul>
-    <h2>3. Third-Party Infrastructure</h2>
-    <p>RingScout runs on Google Cloud Run and Vertex AI (Google Maps Grounding &amp; Gemini Live) with PSTN telephony termination via licensed Indian SIP carriers (Vobiz / Plivo / Twilio). Optional paid calls use Stripe Machine Payments Protocol or x402 USDC without RingScout ever storing raw payment card numbers.</p>
-    <h2>4. Contact &amp; Deletion Requests</h2>
-    <p>To report an issue or request immediate removal of an ephemeral call clip, open an issue at <a href="https://github.com/manavaga/ringscout/issues">github.com/manavaga/ringscout/issues</a>.</p>
+    <h2>5. Third-Party Infrastructure &amp; Contact</h2>
+    <p>RingScout runs on Google Cloud Run and Vertex AI (Google Maps Grounding &amp; Gemini Live) with Indian telephony termination via Vobiz. Full <a href="https://github.com/manavaga/ringscout/blob/main/PRIVACY.md">Privacy Notice</a>, <a href="https://github.com/manavaga/ringscout/blob/main/TERMS.md">Terms of Use</a>, <a href="https://github.com/manavaga/ringscout/blob/main/SUPPORT.md">Support</a>, and <a href="https://github.com/manavaga/ringscout/blob/main/SECURITY.md">Security Policy</a> are published on GitHub. Privacy/deletion contact: <strong>agarwalmanav91@gmail.com</strong>.</p>
   </main>
 </body>
 </html>"""
         return HTMLResponse(content=html)
+
+    @app.get("/terms", include_in_schema=False)
+    async def terms_redirect() -> PlainTextResponse:
+        terms_path = Path(__file__).resolve().parents[2] / "TERMS.md"
+        if terms_path.is_file():
+            return PlainTextResponse(content=terms_path.read_text(encoding="utf-8"))
+        return PlainTextResponse(content="See https://github.com/manavaga/ringscout/blob/main/TERMS.md")
 
     @app.get("/sitemap.xml", include_in_schema=False)
     async def sitemap_xml(request: Request) -> Response:
@@ -1017,14 +1157,27 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
             "server_card": f"{base_url}/.well-known/mcp/server-card.json",
         }
 
+    async def _retention_sweeper_loop() -> None:
+        while True:
+            await asyncio.sleep(600.0)
+            try:
+                manager.purge_expired_data()
+                endpoint_tracker.purge_expired_in_memory()
+                analytics.purge_expired()
+            except Exception:
+                pass
+
     @app.on_event("startup")
     async def _sync_persisted_carrier_on_startup() -> None:
+        manager.purge_expired_data()
+        asyncio.create_task(_retention_sweeper_loop())
         cfg = manager.pstn_adapter.resolve_config()
         if cfg is not None and is_bridge_enabled():
             asyncio.create_task(sync_carrier_config_to_cloud_run(cfg))
 
     @app.get("/api/health")
     async def health(request: Request) -> dict[str, Any]:
+        manager.purge_expired_data()
         pstn_status = manager.pstn_adapter.masked_status()
         base_url = _derive_public_base_url(request, manager.pstn_adapter)
         pay_status = masked_payment_status()
@@ -1046,6 +1199,12 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
             "cloud_run_bridge_active": is_bridge_enabled(),
             "payment_gate_mode": pay_status["gate_mode"],
             "stripe_mode": pay_status["stripe_mode"],
+            "retention_policy": {
+                "call_audio_and_transcripts_ttl_seconds": int(manager.retention_ttl_seconds),
+                "operational_logs_retention_days": OPERATIONAL_LOG_RETENTION_DAYS,
+                "proactive_ai_and_recording_disclosure": True,
+                "public_dashboard_redacts_transcripts_and_audio": True,
+            },
         }
 
     @app.get("/api/locations")
@@ -1179,7 +1338,8 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
 
     @app.get("/api/dashboard/summary")
     async def get_live_dashboard_summary(request: Request) -> dict[str, Any]:
-        """Public-safe live dashboard telemetry across MCP, Google A2A, ChatGPT Actions, and Consumer Web calls."""
+        """Public-safe live dashboard telemetry (redacts transcripts, caller names, and WAV audio unless admin)."""
+        manager.purge_expired_data()
         base_url = _derive_public_base_url(request, manager.pstn_adapter).rstrip("/")
         provided_pass = request.headers.get("x-ringscout-passcode") or request.query_params.get("passcode")
         is_admin = _check_admin_passcode_value(provided_pass)
@@ -1223,9 +1383,10 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
                     durations.append(c.duration_sec)
 
                 signed_audio = None
-                if c.audio_url:
+                if is_admin and c.audio_url:
                     sig = LiveIndiaPstnAdapter.sign_pstn_token("audio", q.quest_id, c.shop.shop_id)
                     signed_audio = f"{c.audio_url}?sig={sig}"
+                raw_quote_dump = c.quote.model_dump() if c.quote else None
                 call_rows.append(
                     {
                         "shop_id": c.shop.shop_id,
@@ -1237,10 +1398,10 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
                         "duration_sec": round(c.duration_sec, 1),
                         "dtmf_sent": c.dtmf_sent,
                         "carrier_provider": c.carrier_provider,
-                        "call_uuid_short": (c.twilio_call_sid[:8] if c.twilio_call_sid else None),
-                        "quote": c.quote.model_dump() if c.quote else None,
+                        "call_uuid_short": (c.twilio_call_sid[:8] if (is_admin and c.twilio_call_sid) else None),
+                        "quote": raw_quote_dump if is_admin else _public_safe_quote_dict(raw_quote_dump),
                         "audio_url": signed_audio,
-                        "transcript": [t.model_dump() for t in c.transcript],
+                        "transcript": [t.model_dump() for t in c.transcript] if is_admin else [],
                     }
                 )
 
@@ -1258,7 +1419,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
                     "place_category": q.place_category.value,
                     "city": q.city,
                     "locality": q.locality,
-                    "user_goal": q.user_goal,
+                    "user_goal": q.user_goal if is_admin else f"{q.place_category.value} check ({q.locality or q.city})",
                     "calls": call_rows,
                 }
             )
@@ -1532,6 +1693,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
 
     @app.get("/api/quests/{quest_id}", dependencies=[Depends(verify_user_passcode)])
     async def get_quest(quest_id: str, request: Request) -> dict[str, Any]:
+        manager.purge_expired_data()
         quest = manager.quests.get(quest_id)
         if not quest:
             raise HTTPException(status_code=404, detail="Quest not found")
@@ -1540,8 +1702,24 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
             raise HTTPException(status_code=403, detail="Admin passcode required to inspect operator self-test quest.")
         return _quest_payload(quest, mask_phones=not authorized)
 
+    @app.delete("/api/quests/{quest_id}", dependencies=[Depends(verify_user_passcode)])
+    async def delete_quest_endpoint(quest_id: str, request: Request) -> dict[str, Any]:
+        """Self-service immediate deletion of a quest, its transcripts, and any in-memory WAV audio clips."""
+        manager.purge_expired_data()
+        quest = manager.quests.get(quest_id)
+        if not quest:
+            raise HTTPException(status_code=404, detail="Quest not found or already deleted")
+        if not _is_quest_owner_or_admin(request, quest_id):
+            raise HTTPException(
+                status_code=403,
+                detail="Quest owner token (X-Quest-Token) or Admin Passcode required to delete quest data.",
+            )
+        manager._evict_quest(quest_id, quest)
+        return {"deleted": True, "quest_id": quest_id}
+
     @app.post("/api/quests/{quest_id}/stop", dependencies=[Depends(verify_user_passcode)])
     async def stop_quest_endpoint(quest_id: str, request: Request) -> dict[str, Any]:
+        manager.purge_expired_data()
         if quest_id not in manager.quests:
             raise HTTPException(status_code=404, detail="Quest not found")
         if not _is_quest_owner_or_admin(request, quest_id):
@@ -1554,6 +1732,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
 
     @app.get("/api/quests/{quest_id}/events", dependencies=[Depends(verify_user_passcode)])
     async def stream_quest_events(quest_id: str, request: Request) -> StreamingResponse:
+        manager.purge_expired_data()
         quest = manager.quests.get(quest_id)
         if not quest:
             raise HTTPException(status_code=404, detail="Quest not found")
@@ -1571,6 +1750,8 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
                     try:
                         item = await asyncio.wait_for(queue.get(), timeout=15.0)
                         ev_name = item["event"]
+                        if not authorized and ev_name == "transcript":
+                            continue
                         data = dict(item["data"])
                         masked_payload = _quest_payload(quest, mask_phones=not authorized)
                         data["ranked_quotes"] = masked_payload["ranked_quotes"]
@@ -1581,6 +1762,17 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
                                 call_copy["shop"]["phone_display"] = _mask_phone_for_public_dashboard(
                                     str(call_copy["shop"].get("phone_display") or "")
                                 )
+                            call_copy["transcript"] = []
+                            call_copy["audio_url"] = None
+                            call_copy["quote"] = _public_safe_quote_dict(call_copy.get("quote"))
+                            data["call"] = call_copy
+                        elif authorized and "call" in data and isinstance(data["call"], dict):
+                            call_copy = json.loads(json.dumps(data["call"]))
+                            raw_aud = call_copy.get("audio_url")
+                            shop_id_ev = (call_copy.get("shop") or {}).get("shop_id") or ""
+                            if raw_aud and "sig=" not in str(raw_aud) and shop_id_ev:
+                                sig_ev = LiveIndiaPstnAdapter.sign_pstn_token("audio", quest.quest_id, shop_id_ev)
+                                call_copy["audio_url"] = f"{raw_aud}?sig={sig_ev}"
                             data["call"] = call_copy
                         data["quest_status"] = quest.status
                         yield f"event: {ev_name}\ndata: {json.dumps(data)}\n\n"
@@ -1601,20 +1793,18 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
     async def get_call_audio_wav(
         quest_id: str, shop_id: str, request: Request
     ) -> Response:
-        provided_pass = request.headers.get("x-ringscout-passcode") or request.query_params.get(
-            "passcode"
-        )
+        manager.purge_expired_data()
         sig = request.query_params.get("sig")
-        if not _check_passcode_value(provided_pass) and not LiveIndiaPstnAdapter.verify_pstn_token(
+        if not _is_quest_owner_or_admin(request, quest_id) and not LiveIndiaPstnAdapter.verify_pstn_token(
             "audio", quest_id, shop_id, sig
         ):
             raise HTTPException(
                 status_code=401,
-                detail="Passcode or signed audio receipt token required",
+                detail="Admin passcode, quest owner token, or signed caller audio receipt token required",
             )
         wav_bytes = manager.audio_store.get((quest_id, shop_id))
         if not wav_bytes:
-            raise HTTPException(status_code=404, detail="Audio clip not ready yet")
+            raise HTTPException(status_code=404, detail="Audio clip not available or expired (24h retention)")
         return Response(
             content=wav_bytes,
             media_type="audio/wav",
@@ -2086,7 +2276,11 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
 
     @app.websocket("/ws/mic-call/{quest_id}/{shop_id}")
     async def browser_mic_websocket(websocket: WebSocket, quest_id: str, shop_id: str) -> None:
-        if not _check_passcode_value(websocket.query_params.get("passcode")):
+        provided_pass = websocket.query_params.get("passcode")
+        qtok = websocket.query_params.get("token")
+        if not _check_admin_passcode_value(provided_pass) and not LiveIndiaPstnAdapter.verify_pstn_token(
+            "quest_owner", quest_id, "owner", qtok
+        ):
             await websocket.close(code=1008)
             return
         quest = manager.quests.get(quest_id)
@@ -2162,7 +2356,9 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
     async def get_endpoint_request_tracker(
         request: Request, window_hours: int = 168
     ) -> dict[str, Any]:
-        """Return persistent Cloud-Logging-merged + real-time funnel, PSTN calls, callers, and endpoint stats."""
+        """Return persistent Cloud-Logging-merged + real-time funnel (redacts transcripts & audio unless admin)."""
+        manager.purge_expired_data()
+        endpoint_tracker.purge_expired_in_memory()
         safe_hours = max(1, min(int(window_hours), 720))
         provided_pass = request.headers.get("x-ringscout-passcode") or request.query_params.get("passcode")
         is_admin = _check_admin_passcode_value(provided_pass)
@@ -2174,9 +2370,10 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
             call_rows = []
             for c in q.ranked_quotes():
                 signed_audio = None
-                if c.audio_url:
+                if is_admin and c.audio_url:
                     sig = LiveIndiaPstnAdapter.sign_pstn_token("audio", q.quest_id, c.shop.shop_id)
                     signed_audio = f"{c.audio_url}?sig={sig}"
+                raw_quote_dump = c.quote.model_dump() if c.quote else None
                 call_rows.append(
                     {
                         "shop_id": c.shop.shop_id,
@@ -2185,9 +2382,9 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
                         "status": c.status.value,
                         "outcome": c.outcome.value,
                         "duration_sec": round(c.duration_sec, 1),
-                        "quote": c.quote.model_dump() if c.quote else None,
+                        "quote": raw_quote_dump if is_admin else _public_safe_quote_dict(raw_quote_dump),
                         "audio_url": signed_audio,
-                        "transcript": [t.model_dump() for t in c.transcript],
+                        "transcript": [t.model_dump() for t in c.transcript] if is_admin else [],
                     }
                 )
             created_iso = datetime.datetime.fromtimestamp(
@@ -2204,7 +2401,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
                     "caller_agent": q.caller_agent,
                     "city": q.city,
                     "locality": q.locality,
-                    "user_goal": q.user_goal,
+                    "user_goal": q.user_goal if is_admin else f"{q.place_category.value} check ({q.locality or q.city})",
                     "calls": call_rows,
                 }
             )

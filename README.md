@@ -106,6 +106,12 @@ pytest -q
 python3 scripts/verify_mcp_discovery.py https://ringscout-hom7ntreuq-uc.a.run.app
 ```
 
+## Policies, Privacy & Support
+
+- **Proactive AI & Recording Disclosure:** RingScout identifies itself upfront on Turn 1 as the **RingScout AI assistant** on a **recorded call** before inbound recipient audio recording begins, and immediately ends the call without retaining audio if a recipient objects.
+- **Data Privacy & Retention:** Public dashboards expose aggregate telemetry only (transcripts and WAV audio are private to the requesting caller/admin and **auto-expire after 24 hours**; Cloud Run `_Default` operational logs expire after **30 days**).
+- **Documents (Governing Law: India):** [Privacy Notice](PRIVACY.md) · [Terms of Use](TERMS.md) · [Support](SUPPORT.md) · [FAQ](FAQ.md) · [Security Policy](SECURITY.md)
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
