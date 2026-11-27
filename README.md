@@ -2,6 +2,8 @@
 
 **Real-time local voice checks**
 
+[![Add to Cursor](https://img.shields.io/badge/Add_to_Cursor-1--Click_MCP-000000?style=flat-square&logo=cursor&logoColor=white)](https://cursor.com/en/install-mcp?name=ringscout&config=eyJ1cmwiOiAiaHR0cHM6Ly9yaW5nc2NvdXQtaG9tN250cmV1cS11Yy5hLnJ1bi5hcHAvbWNwIn0=)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MCP-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522ringscout%2522%252C%2522type%2522%253A%2522http%2522%252C%2522url%2522%253A%2522https%253A%2F%2Fringscout-hom7ntreuq-uc.a.run.app%2Fmcp%2522%257D)
 [![Official MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.manavaga%2Fringscout-10b981?style=flat-square)](https://registry.modelcontextprotocol.io/v0/servers?search=ringscout)
 [![manavaga/ringscout MCP server](https://glama.ai/mcp/servers/manavaga/ringscout/badges/score.svg)](https://glama.ai/mcp/servers/manavaga/ringscout)
 [![Remote MCP](https://img.shields.io/badge/Remote_MCP-Streamable_HTTP-6366f1?style=flat-square)](https://ringscout-hom7ntreuq-uc.a.run.app/mcp)
@@ -49,6 +51,9 @@ RingScout can contact up to **five businesses in parallel** and return verified 
 ```text
 https://ringscout-hom7ntreuq-uc.a.run.app/mcp
 ```
+
+### Google Gemini App (`gemini.google.com/customize/connectors → + Custom`)
+- Sign in with a personal `@gmail.com` account → click **`+ Custom`** → paste `https://ringscout-hom7ntreuq-uc.a.run.app/mcp` → name it **`RingScout`** (syncs to Gemini mobile too; invoke with `@RingScout`).
 
 ### Cursor / Windsurf / VS Code / Gemini CLI / Claude Desktop (`mcpServers`)
 ```json
