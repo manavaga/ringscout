@@ -31,6 +31,16 @@ from ringscout.carriers import LiveIndiaPstnAdapter
 from ringscout.cloud_run_bridge import is_bridge_enabled, relay_quest_via_cloud_run
 from ringscout.google_lookup import discover_indian_shops, infer_place_category
 from ringscout.india_locations import INDIA_CITY_AREAS
+from ringscout.inr_payments import (
+    INR_CREDIT_LEDGER,
+    INR_CREDIT_PACKS,
+    INR_PER_USD_ESTIMATE,
+    create_razorpay_upi_topup,
+    get_effective_razorpay_credentials,
+    is_valid_ringscout_api_key,
+    mask_api_key,
+    masked_razorpay_status,
+)
 from ringscout.models import (
     A2AScoutRequest,
     AP2SpendMandate,
@@ -83,6 +93,9 @@ BASE_SEPOLIA_USDC_CONTRACT = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
 SCOUT_PRICE_USD = 0.75
 SCOUT_PRICE_USD_STR = "0.75"
 SCOUT_ATOMIC_USDC = "750000"  # 0.75 USDC (6 decimals)
+X402_MICRO_PRICE_USD = 0.05
+X402_MICRO_PRICE_USD_STR = "0.05"
+X402_MICRO_ATOMIC_USDC = "50000"  # 0.05 USDC (6 decimals) — dedicated always-402 micro-payment rail
 DEFAULT_X402_FACILITATOR_VERIFY_URL = "https://www.x402.org/facilitator/verify"
 DEFAULT_X402_FACILITATOR_SETTLE_URL = "https://www.x402.org/facilitator/settle"
 DEFAULT_PAY_TO_WALLET = "0x9C8f2A6b4E10d35c7F89B2D14E60a53C8190b7E4"
@@ -152,17 +165,32 @@ class BoundedTaskStore(OrderedDict[str, dict[str, Any]]):
 
 A2A_TASK_STORE = BoundedTaskStore(max_entries=128, ttl_seconds=86400.0)
 SPENT_X402_NONCES: OrderedDict[str, float] = OrderedDict()
+_X402_NONCE_LOCK = asyncio.Lock()
+
+
+def _x402_replay_key(network: str, payer: str, nonce_or_sig: str) -> str:
+    return f"{network.lower()}:{payer.lower()}:{nonce_or_sig.lower()}"
 
 
 def _record_or_reject_x402_replay(network: str, payer: str, nonce_or_sig: str) -> bool:
     """Return True if fresh (and record in bounded replay cache), False if already spent."""
-    key = f"{network.lower()}:{payer.lower()}:{nonce_or_sig.lower()}"
+    key = _x402_replay_key(network, payer, nonce_or_sig)
     if key in SPENT_X402_NONCES:
         return False
     SPENT_X402_NONCES[key] = time.time()
     while len(SPENT_X402_NONCES) > 2048:
         SPENT_X402_NONCES.popitem(last=False)
     return True
+
+
+async def _reserve_x402_replay(network: str, payer: str, nonce_or_sig: str) -> bool:
+    async with _X402_NONCE_LOCK:
+        return _record_or_reject_x402_replay(network, payer, nonce_or_sig)
+
+
+async def _release_x402_replay(network: str, payer: str, nonce_or_sig: str) -> None:
+    async with _X402_NONCE_LOCK:
+        SPENT_X402_NONCES.pop(_x402_replay_key(network, payer, nonce_or_sig), None)
 
 
 def configured_pay_to_wallet() -> str:
@@ -220,6 +248,7 @@ def _bazaar_io_schema() -> dict[str, Any]:
 def build_x402_payment_requirements(
     pay_to: str | None = None,
     network: str = BASE_CAIP2_NETWORK,
+    atomic_usdc: str = SCOUT_ATOMIC_USDC,
 ) -> dict[str, Any]:
     target_wallet = pay_to or configured_pay_to_wallet()
     asset = (
@@ -231,7 +260,7 @@ def build_x402_payment_requirements(
         "scheme": "exact",
         "network": network,
         "asset": asset,
-        "amount": SCOUT_ATOMIC_USDC,
+        "amount": atomic_usdc,
         "payTo": target_wallet,
         "maxTimeoutSeconds": 120,
         "outputSchema": _bazaar_io_schema(),
@@ -243,25 +272,47 @@ def build_x402_payment_requirements(
     }
 
 
-def build_x402_accepts_list(pay_to: str | None = None) -> list[dict[str, Any]]:
+def build_x402_accepts_list(
+    pay_to: str | None = None,
+    atomic_usdc: str = SCOUT_ATOMIC_USDC,
+) -> list[dict[str, Any]]:
     """Advertise both Base Mainnet (`eip155:8453`) and Base Sepolia (`eip155:84532`) USDC."""
     return [
-        build_x402_payment_requirements(pay_to=pay_to, network=BASE_CAIP2_NETWORK),
-        build_x402_payment_requirements(pay_to=pay_to, network=BASE_SEPOLIA_CAIP2_NETWORK),
+        build_x402_payment_requirements(
+            pay_to=pay_to, network=BASE_CAIP2_NETWORK, atomic_usdc=atomic_usdc
+        ),
+        build_x402_payment_requirements(
+            pay_to=pay_to, network=BASE_SEPOLIA_CAIP2_NETWORK, atomic_usdc=atomic_usdc
+        ),
     ]
+
+
+def _extract_origin(resource_url: str) -> str:
+    m = re.match(r"^(https?://[^/]+)", (resource_url or "").strip())
+    return m.group(1) if m else "https://ringscout-1004579867040.us-central1.run.app"
 
 
 def build_402_challenge(
     resource_url: str,
-    detail: str = "Payment Required ($0.75 USD via Stripe MPP / SPT or x402 Base USDC)",
+    detail: str | None = None,
+    *,
+    price_usd: float = SCOUT_PRICE_USD,
+    atomic_usdc: str = SCOUT_ATOMIC_USDC,
 ) -> tuple[dict[str, str], dict[str, Any]]:
-    """Construct dual `Stripe MPP` (`WWW-Authenticate: Payment`) + `x402` v2 + `AP2` HTTP 402 challenge."""
-    accepts = build_x402_accepts_list()
-    mpp_ch = build_stripe_mpp_challenge(resource_url)
+    """Construct multi-rail `x402` v2 + `Razorpay INR UPI` + `Stripe MPP` + `AP2` HTTP 402 challenge."""
+    price_str = f"{price_usd:.2f}"
+    eff_detail = detail or (
+        f"Payment Required (${price_str} USDC on Base via x402, or prepaid INR UPI pack starting ₹19 at /api/v1/inr/topup)"
+    )
+    accepts = build_x402_accepts_list(atomic_usdc=atomic_usdc)
+    mpp_ch = build_stripe_mpp_challenge(
+        resource_url, amount_cents=max(1, round(price_usd * 100))
+    )
     checkout_url = get_effective_checkout_url()
+    origin = _extract_origin(resource_url)
     x402_envelope: dict[str, Any] = {
         "x402Version": 2,
-        "error": detail,
+        "error": eff_detail,
         "resource": {
             "url": resource_url,
             "description": "Parallel en-IN / hi-IN voice insights across Google Maps hotels, restaurants, clinics, petrol stations, MRI centers & shops",
@@ -276,13 +327,26 @@ def build_402_challenge(
                 "schema": _bazaar_io_schema(),
             }
         },
+        "inr_upi": {
+            "provider": "razorpay",
+            "currency": "INR",
+            "methods": ["upi_gpay", "upi_phonepe", "upi_paytm", "upi_qr", "indian_cards"],
+            "topup_endpoint": f"{origin}/api/v1/inr/topup",
+            "packs_endpoint": f"{origin}/api/v1/inr/packs",
+            "credits_endpoint": f"{origin}/api/v1/inr/credits",
+            "mcp_tool": "buy_ringscout_inr_credits",
+            "header": "X-RingScout-Key",
+            "starting_pack_inr": 19,
+            "starting_pack_calls": 10,
+            "packs": list(INR_CREDIT_PACKS.values()),
+        },
         "mpp": {
             "protocol": "mpp-1.0",
             "id": mpp_ch["id"],
             "realm": mpp_ch["realm"],
             "method": "stripe",
             "intent": "charge",
-            "amount": SCOUT_PRICE_USD_STR,
+            "amount": price_str,
             "currency": "USD",
             "request": mpp_ch["request"],
             "expires": mpp_ch["expires"],
@@ -291,7 +355,7 @@ def build_402_challenge(
         },
         "ap2": {
             "protocol": "google-ap2-1.0",
-            "required_min_amount_usd": SCOUT_PRICE_USD,
+            "required_min_amount_usd": price_usd,
             "header": "X-AP2-Mandate",
         },
     }
@@ -349,7 +413,22 @@ def build_x402_discovery_manifest(base_url: str, live_pstn_ready: bool) -> dict[
         "facilitator": os.environ.get("X402_FACILITATOR_URL", DEFAULT_X402_FACILITATOR_VERIFY_URL),
         "liveIndiaPstnConfigured": live_pstn_ready,
         "a2aAgentCard": f"{clean}/.well-known/agent-card.json",
+        "inrUpiTopup": {
+            "url": f"{clean}/api/v1/inr/topup",
+            "packsUrl": f"{clean}/api/v1/inr/packs",
+            "creditsUrl": f"{clean}/api/v1/inr/credits",
+            "currency": "INR",
+            "startingAmountInr": 19,
+            "provider": "razorpay",
+        },
         "resources": [
+            {
+                "url": f"{clean}/api/v1/x402/scout",
+                "method": "POST",
+                "protocol": "x402-v2-always-paid",
+                "priceUsd": X402_MICRO_PRICE_USD,
+                "accepts": build_x402_accepts_list(atomic_usdc=X402_MICRO_ATOMIC_USDC),
+            },
             {
                 "url": f"{clean}/api/v1/scout",
                 "method": "POST",
@@ -395,7 +474,9 @@ def _parse_b64_or_json(raw: str) -> dict[str, Any] | None:
 
 
 def validate_ap2_mandate(
-    body_mandate: AP2SpendMandate | None, header_mandate_raw: str | None
+    body_mandate: AP2SpendMandate | None,
+    header_mandate_raw: str | None,
+    min_amount_usd: float = SCOUT_PRICE_USD,
 ) -> tuple[AP2SpendMandate | None, str | None, str | None]:
     """Validate optional Google AP2 spend mandate; return `(mandate, sha256_prefix, error_msg)`."""
     mandate = body_mandate
@@ -411,11 +492,11 @@ def validate_ap2_mandate(
     if mandate is None:
         return None, None, None
 
-    if mandate.max_amount_usd < SCOUT_PRICE_USD:
+    if mandate.max_amount_usd < min_amount_usd:
         return (
             None,
             None,
-            f"AP2 mandate max_amount_usd (${mandate.max_amount_usd:.2f}) is below required ${SCOUT_PRICE_USD:.2f}",
+            f"AP2 mandate max_amount_usd (${mandate.max_amount_usd:.2f}) is below required ${min_amount_usd:.2f}",
         )
     if mandate.expires_at_epoch is not None and mandate.expires_at_epoch < time.time():
         return None, None, "AP2 spend mandate has expired"
@@ -427,6 +508,17 @@ def validate_ap2_mandate(
 
 class PaymentRequiredError(Exception):
     """Raised when global free-tier PSTN circuit breaker or payment gate requires HTTP 402."""
+
+
+def _extract_bearer_api_key(auth_header: str | None) -> str | None:
+    if not auth_header:
+        return None
+    raw = auth_header.strip()
+    if raw.lower().startswith("bearer "):
+        tok = raw[7:].strip()
+        if tok.startswith("rk_"):
+            return tok
+    return None
 
 
 async def verify_a2a_payment(
@@ -443,11 +535,49 @@ async def verify_a2a_payment(
     user_agent: str | None = None,
     execution_mode: str = "auto",
     github_username: str | None = None,
+    api_key: str | None = None,
+    force_paid: bool = False,
+    min_atomic_usdc: str = SCOUT_ATOMIC_USDC,
+    charge_usd: float = SCOUT_PRICE_USD,
 ) -> tuple[PaymentSettlement | None, str]:
-    """Verify Phase A open quota OR Phase B `x402` v2 EIP-3009 / `Stripe MPP` (`SPT`/`PaymentIntent`) / `AP2`."""
-    mandate, mandate_digest, mandate_err = validate_ap2_mandate(ap2_mandate, ap2_header_raw)
+    """Verify INR UPI credits, `x402` v2 EIP-3009 USDC, `Stripe MPP`, `AP2`, or Phase A/Star-Gate free quota."""
+    mandate, mandate_digest, mandate_err = validate_ap2_mandate(
+        ap2_mandate, ap2_header_raw, min_amount_usd=charge_usd
+    )
     if mandate_err:
         return None, mandate_err
+
+    # 0. Check Prepaid India INR / UPI Credits (`X-RingScout-Key`, `Authorization: Bearer rk_...`, or `api_key`)
+    eff_api_key = (api_key or "").strip() or _extract_bearer_api_key(auth_header)
+    if eff_api_key:
+        rzp_kid, _, _ = get_effective_razorpay_credentials()
+        if (
+            eff_api_key.startswith("rk_test_")
+            and rzp_kid.startswith("rzp_live_")
+            and not owner_passcode_valid
+        ):
+            return None, "Test-mode rk_test_ API key cannot be used on a live Razorpay server"
+        try:
+            ok, _acc, credit_reason = await INR_CREDIT_LEDGER.consume_credit(
+                api_key=eff_api_key, cost_credits=1
+            )
+        except Exception as exc:
+            logger.warning("INR credit deduction error: %s", exc)
+            return None, "Prepaid INR credit ledger temporarily unavailable (please retry)"
+        if not ok:
+            return None, credit_reason
+        return (
+            PaymentSettlement(
+                rail="razorpay-inr-upi-credits",
+                charged_usd=round(1.63 / INR_PER_USD_ESTIMATE, 4),
+                payer=mask_api_key(eff_api_key),
+                network="razorpay:inr",
+                ap2_mandate_id=mandate.mandate_id if mandate else None,
+                ap2_mandate_sha256=mandate_digest,
+                sandbox=eff_api_key.startswith("rk_test_"),
+            ),
+            "ok",
+        )
 
     # 1. Check x402 `PAYMENT-SIGNATURE` / `X-PAYMENT` header
     if payment_sig_header:
@@ -464,7 +594,7 @@ async def verify_a2a_payment(
             return (
                 PaymentSettlement(
                     rail="x402-v2-sandbox",
-                    charged_usd=SCOUT_PRICE_USD,
+                    charged_usd=charge_usd,
                     payer=payer,
                     network=str((payload_obj.get("accepted") or {}).get("network") or BASE_CAIP2_NETWORK),
                     ap2_mandate_id=mandate.mandate_id if mandate else None,
@@ -502,10 +632,10 @@ async def verify_a2a_payment(
         if inner_auth.get("to") and str(inner_auth.get("to")).lower() != target_wallet.lower():
             return None, "x402 authorization.to does not match payTo wallet"
         try:
-            if int(str(accepted.get("amount", "0"))) < int(SCOUT_ATOMIC_USDC):
-                return None, "x402 atomic USDC amount below 750000 ($0.75)"
-            if inner_auth.get("value") is not None and int(str(inner_auth["value"])) < int(SCOUT_ATOMIC_USDC):
-                return None, "x402 authorization.value below 750000 ($0.75)"
+            if int(str(accepted.get("amount", "0"))) < int(min_atomic_usdc):
+                return None, f"x402 atomic USDC amount below {min_atomic_usdc} (${charge_usd:.2f})"
+            if inner_auth.get("value") is not None and int(str(inner_auth["value"])) < int(min_atomic_usdc):
+                return None, f"x402 authorization.value below {min_atomic_usdc} (${charge_usd:.2f})"
         except ValueError:
             return None, "Invalid x402 amount"
 
@@ -524,7 +654,7 @@ async def verify_a2a_payment(
                 if net == BASE_SEPOLIA_CAIP2_NETWORK
                 else BASE_USDC_CONTRACT
             ),
-            "amount": SCOUT_ATOMIC_USDC,
+            "amount": min_atomic_usdc,
             "payTo": target_wallet,
             "maxTimeoutSeconds": 120,
             "extra": {"name": "USDC", "version": "2"},
@@ -541,6 +671,9 @@ async def verify_a2a_payment(
         cdp_token = os.environ.get("X402_FACILITATOR_BEARER_TOKEN", "").strip()
         if cdp_token:
             headers["Authorization"] = f"Bearer {cdp_token}"
+        if not await _reserve_x402_replay(net, claimed_from, replay_token):
+            return None, "x402 payment authorization nonce has already been spent (replay blocked)"
+
         try:
             async with httpx.AsyncClient(timeout=12.0, follow_redirects=True) as http:
                 resp = await http.post(facilitator_url, json=verify_body, headers=headers)
@@ -559,11 +692,13 @@ async def verify_a2a_payment(
                         s_resp.raise_for_status()
                         s_json = s_resp.json()
                         if s_json.get("success") is False:
+                            await _release_x402_replay(net, claimed_from, replay_token)
                             return None, f"x402 settlement failed: {s_json.get('errorReason', 'settle_failed')}"
                         tx_hash = str(s_json.get("transaction") or s_json.get("txHash") or "") or None
 
-                if not _record_or_reject_x402_replay(net, payer, replay_token):
-                    return None, "x402 payment authorization nonce has already been spent (replay blocked)"
+                if payer.lower() != claimed_from.lower():
+                    if not await _reserve_x402_replay(net, payer, replay_token):
+                        return None, "x402 payment authorization nonce has already been spent (replay blocked)"
 
                 rail_name = (
                     "x402-v2-base-sepolia-usdc"
@@ -573,7 +708,7 @@ async def verify_a2a_payment(
                 return (
                     PaymentSettlement(
                         rail=rail_name,
-                        charged_usd=SCOUT_PRICE_USD,
+                        charged_usd=charge_usd,
                         payer=payer,
                         network=net,
                         tx_hash=tx_hash,
@@ -592,12 +727,13 @@ async def verify_a2a_payment(
             ):
                 sig_ok, recovered_addr, _ = verify_x402_eip3009_signature_locally(payload_obj)
                 if sig_ok and recovered_addr:
-                    if not _record_or_reject_x402_replay(net, recovered_addr, replay_token):
-                        return None, "x402 payment authorization nonce has already been spent (replay blocked)"
+                    if recovered_addr.lower() != claimed_from.lower():
+                        if not await _reserve_x402_replay(net, recovered_addr, replay_token):
+                            return None, "x402 payment authorization nonce has already been spent (replay blocked)"
                     return (
                         PaymentSettlement(
                             rail="x402-v2-eip3009-sepolia-verified",
-                            charged_usd=SCOUT_PRICE_USD,
+                            charged_usd=charge_usd,
                             payer=recovered_addr,
                             network=net,
                             ap2_mandate_id=mandate.mandate_id if mandate else None,
@@ -607,8 +743,10 @@ async def verify_a2a_payment(
                         "ok",
                     )
 
+            await _release_x402_replay(net, claimed_from, replay_token)
             return None, f"x402 facilitator rejected signature: {inv_reason}"
         except Exception as exc:
+            await _release_x402_replay(net, claimed_from, replay_token)
             logger.warning("x402 facilitator verification error: %s", exc)
             return None, "x402 facilitator verification failed"
 
@@ -623,6 +761,7 @@ async def verify_a2a_payment(
             stripe_token_header=stripe_token_header,
             owner_passcode_valid=owner_passcode_valid,
             resource_url=resource_url,
+            min_amount_cents=max(1, round(charge_usd * 100)),
         )
         if stripe_ok is None:
             return None, stripe_reason
@@ -630,7 +769,7 @@ async def verify_a2a_payment(
         return (
             PaymentSettlement(
                 rail=s_rail,
-                charged_usd=SCOUT_PRICE_USD,
+                charged_usd=charge_usd,
                 payer=s_payer,
                 network="stripe:usd",
                 tx_hash=s_pi,
@@ -655,6 +794,13 @@ async def verify_a2a_payment(
             "ok",
         )
 
+    # 3b. Dedicated always-paid endpoint (`POST /api/v1/x402/scout`) never falls through to free tier
+    if force_paid:
+        return (
+            None,
+            f"Payment Required (${charge_usd:.2f} USDC on Base via x402 `PAYMENT-SIGNATURE`, or prepaid INR UPI pack via `X-RingScout-Key` from POST /api/v1/inr/topup)",
+        )
+
     # 4. Phase A Open Out-of-the-Box Mode (`gate_mode == "off"`) or Phase B Freemium Quota (`gate_mode == "freemium"`)
     gate_mode = get_payment_gate_mode()
     if gate_mode in ("off", "freemium"):
@@ -675,12 +821,12 @@ async def verify_a2a_payment(
             if is_automated_scanner_user_agent(user_agent):
                 return (
                     None,
-                    "Automated directory scanner detected: attach Stripe MPP (`Authorization: Payment`) or x402 (`PAYMENT-SIGNATURE`) to place real-time +91 PSTN phone calls.",
+                    "Automated directory scanner detected: attach x402 (`PAYMENT-SIGNATURE`), prepaid INR UPI key (`X-RingScout-Key`), or Stripe MPP to place real-time +91 PSTN phone calls.",
                 )
             if os.environ.get("RINGSCOUT_ALLOW_FREE_LIVE_PSTN", "1").strip() == "0":
                 return (
                     None,
-                    "Payment Required ($0.75 USD via Stripe MPP / SPT or x402 Base USDC) to place real-time +91 PSTN phone calls.",
+                    "Payment Required (prepaid INR UPI pack from ₹19 at /api/v1/inr/topup, or $0.05 x402 Base USDC at /api/v1/x402/scout) to place real-time +91 PSTN phone calls.",
                 )
 
         # Optional GitHub Star-Gate ("after_first_call" = 1 free call then star; "strict" = star required from call 1)
@@ -693,13 +839,13 @@ async def verify_a2a_payment(
                 if not clean_gh or not await verify_github_stargazer(clean_gh):
                     return (
                         None,
-                        f"Star {GITHUB_REPO_URL} on GitHub and pass your `github_username` (or `X-GitHub-Username` header) to unlock free live +91 phone calls, or attach $0.75 Stripe MPP / x402 payment.",
+                        f"Star {GITHUB_REPO_URL} on GitHub and pass your `github_username` to unlock 5 free live +91 calls/day, OR buy an instant INR UPI pack (₹19 = 10 calls) via `buy_ringscout_inr_credits` / POST /api/v1/inr/topup and pass your `rk_...` key via `X-RingScout-Key`, OR pay $0.05 USDC via x402.",
                     )
                 gh_ok, _gh_used, gh_limit = check_and_increment_stargazer_quota(clean_gh)
                 if not gh_ok:
                     return (
                         None,
-                        f"Daily GitHub Stargazer free quota ({gh_limit} calls/day for @{clean_gh}) reached; attach Stripe MPP or x402 payment header to continue.",
+                        f"Daily GitHub Stargazer free quota ({gh_limit} calls/day for @{clean_gh}) reached; buy an INR UPI pack (₹19 = 10 calls) via `buy_ringscout_inr_credits` / POST /api/v1/inr/topup and pass `X-RingScout-Key`, or attach x402 payment to continue.",
                     )
 
         within_quota, _used, limit = check_and_increment_free_quota(client_fingerprint)
@@ -719,12 +865,12 @@ async def verify_a2a_payment(
         if gate_mode == "off":
             return (
                 None,
-                f"Daily free out-of-the-box safety cap ({limit} scouts/day) reached; attach Stripe MPP or x402 payment header to continue.",
+                f"Daily free out-of-the-box safety cap ({limit} scouts/day) reached; top up via INR UPI (₹19 = 10 calls) at POST /api/v1/inr/topup or attach x402 payment header to continue.",
             )
 
     return (
         None,
-        "Payment Required ($0.75 USD via Stripe `Authorization: Payment` / `X-Stripe-Payment-Token` or x402 `PAYMENT-SIGNATURE`)",
+        f"Payment Required (prepaid INR UPI pack from ₹19 via `X-RingScout-Key`, or ${charge_usd:.2f} USDC on Base via x402 `PAYMENT-SIGNATURE`)",
     )
 
 
@@ -785,14 +931,19 @@ def build_agent_card(base_url: str, live_pstn_ready: bool) -> dict[str, Any]:
             "chatgpt_openapi_actions": f"{clean_base}/openapi-actions.json",
             "llms_txt": f"{clean_base}/llms.txt",
             "health_ping": f"{clean_base}/ping",
+            "x402_micro_scout": f"{clean_base}/api/v1/x402/scout",
             "x402_scout": f"{clean_base}/api/v1/scout",
             "x402_discovery": f"{clean_base}/.well-known/x402",
+            "inr_upi_packs": f"{clean_base}/api/v1/inr/packs",
+            "inr_upi_topup": f"{clean_base}/api/v1/inr/topup",
+            "inr_upi_credits": f"{clean_base}/api/v1/inr/credits",
             "pricing": f"{clean_base}/api/v1/pricing",
         },
         "protocols": [
             "a2a-1.0",
             "mcp-streamable-http",
             "chatgpt-openapi-actions-3.1",
+            "razorpay-inr-upi",
             "stripe-mpp-1.0",
             "x402-v2",
             "google-ap2-1.0",
@@ -801,7 +952,10 @@ def build_agent_card(base_url: str, live_pstn_ready: bool) -> dict[str, Any]:
             "gate_mode": pay_state["gate_mode"],
             "free_daily_calls": pay_state["free_daily_calls_per_client"],
             "price_usd": SCOUT_PRICE_USD,
-            "supported_rails": ["free_phase_a", "stripe_mpp_spt", "x402_base_usdc"],
+            "x402_micro_price_usd": X402_MICRO_PRICE_USD,
+            "x402_micro_atomic_amount": X402_MICRO_ATOMIC_USDC,
+            "supported_rails": ["free_phase_a", "razorpay_inr_upi", "x402_base_usdc", "stripe_mpp_spt"],
+            "inr_upi": masked_razorpay_status(),
             "stripe_mode": pay_state["stripe_mode"],
             "x402_network": BASE_CAIP2_NETWORK,
             "x402_testnet_network": BASE_SEPOLIA_CAIP2_NETWORK,
@@ -1322,6 +1476,7 @@ async def handle_a2a_jsonrpc(
     client_fingerprint: str = "a2a_agent",
     user_agent: str | None = None,
     github_username_header: str | None = None,
+    api_key_header: str | None = None,
 ) -> tuple[int, dict[str, str], dict[str, Any]]:
     """Handle official Google A2A v1.0 JSON-RPC (`message/send`, `tasks/get`, `tasks/cancel`)."""
     method = str(rpc_body.get("method") or "")
@@ -1404,6 +1559,18 @@ async def handle_a2a_jsonrpc(
                     if cand_gh:
                         eff_gh_user = cand_gh
                         break
+        eff_api_key = (
+            api_key_header
+            or str(metadata.get("apiKey") or metadata.get("api_key") or "").strip()
+            or None
+        )
+        if not eff_api_key:
+            for part in message_obj.get("parts") or []:
+                if isinstance(part, dict) and isinstance(part.get("data"), dict):
+                    cand_key = str(part["data"].get("api_key") or "").strip()
+                    if cand_key:
+                        eff_api_key = cand_key
+                        break
         settlement, reason = await verify_a2a_payment(
             resource_url=resource_url,
             payment_sig_header=eff_sig,
@@ -1417,6 +1584,7 @@ async def handle_a2a_jsonrpc(
             user_agent=user_agent,
             execution_mode=peek_mode,
             github_username=eff_gh_user,
+            api_key=eff_api_key,
         )
         if settlement is None:
             hdrs, challenge_body = build_402_challenge(resource_url, detail=reason)
@@ -1602,6 +1770,11 @@ _SCOUT_MCP_INPUT_SCHEMA: dict[str, Any] = {
             "description": "Optional GitHub handle that starred https://github.com/manavaga/ringscout to unlock bonus free live calls.",
             "default": "",
         },
+        "api_key": {
+            "type": "string",
+            "description": "Optional prepaid India INR UPI RingScout API key (`rk_live_...` / `rk_test_...`) from `buy_ringscout_inr_credits`.",
+            "default": "",
+        },
         "max_shops": {
             "type": "integer",
             "minimum": 1,
@@ -1713,6 +1886,79 @@ MCP_TOOLS_SPEC: list[dict[str, Any]] = [
             "destructiveHint": False,
             "idempotentHint": False,
             "openWorldHint": True,
+        },
+    },
+    {
+        "name": "buy_ringscout_inr_credits",
+        "title": "Buy Prepaid RingScout +91 Call Credits via India UPI (₹19 / ₹49 / ₹99)",
+        "description": (
+            "Generates an instant Razorpay INR UPI payment link (GPay, PhonePe, Paytm, BHIM, Indian cards) "
+            "for prepaid RingScout live +91 call packs (`starter_19`: ₹19 for 10 calls, `pro_49`: ₹49 for 30 calls, "
+            "`scale_99`: ₹99 for 75 calls, `agent_499`: ₹499 for 400 calls) and returns an API key (`rk_...`) that "
+            "activates automatically upon UPI payment."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "pack_id": {
+                    "type": "string",
+                    "enum": ["starter_19", "pro_49", "scale_99", "agent_499"],
+                    "default": "pro_49",
+                    "description": "Prepaid INR pack: 'starter_19' (₹19 / 10 calls), 'pro_49' (₹49 / 30 calls), 'scale_99' (₹99 / 75 calls), or 'agent_499' (₹499 / 400 calls).",
+                },
+                "existing_api_key": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Optional existing `rk_...` RingScout API key to top up instead of generating a new key.",
+                },
+                "github_username": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Optional GitHub handle to link your prepaid INR credits to automatically.",
+                },
+                "customer_name": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Optional buyer name for the UPI receipt.",
+                },
+                "customer_email": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Optional buyer email for the UPI receipt.",
+                },
+            },
+        },
+        "annotations": {
+            "title": "Buy INR UPI Call Credits (Razorpay)",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        },
+    },
+    {
+        "name": "check_ringscout_credits",
+        "title": "Check Prepaid RingScout INR Call Credit Balance",
+        "description": (
+            "Read-only free tool to check remaining prepaid INR call credits for an authenticated "
+            "RingScout API key (`rk_live_...` or `rk_test_...`)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "api_key": {
+                    "type": "string",
+                    "description": "RingScout prepaid API key (`rk_live_...` or `rk_test_...`).",
+                },
+            },
+            "required": ["api_key"],
+        },
+        "annotations": {
+            "title": "Check Prepaid INR Credit Balance",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False,
         },
     },
 ]
@@ -1831,6 +2077,7 @@ async def handle_mcp_jsonrpc(
     client_fingerprint: str = "mcp_connector",
     user_agent: str | None = None,
     github_username_header: str | None = None,
+    api_key_header: str | None = None,
     out_headers: dict[str, str] | None = None,
     incoming_session_id: str | None = None,
 ) -> dict[str, Any] | None:
@@ -2011,9 +2258,67 @@ async def handle_mcp_jsonrpc(
                 },
             }
 
+        if tool_name == "buy_ringscout_inr_credits":
+            try:
+                topup = await create_razorpay_upi_topup(
+                    pack_id=str(args.get("pack_id") or "pro_49"),
+                    base_url=clean_base,
+                    existing_api_key=(
+                        str(args.get("existing_api_key") or "").strip() or api_key_header
+                    ),
+                    github_username=str(
+                        args.get("github_username") or github_username_header or ""
+                    ),
+                    customer_name=str(args.get("customer_name") or ""),
+                    customer_email=str(args.get("customer_email") or ""),
+                )
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "content": [{"type": "text", "text": json.dumps(topup, indent=2)}],
+                        "isError": False,
+                    },
+                }
+            except Exception as exc:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "content": [{"type": "text", "text": f"INR UPI topup error: {exc}"}],
+                        "isError": True,
+                    },
+                }
+
+        if tool_name == "check_ringscout_credits":
+            eff_key = str(args.get("api_key") or api_key_header or "").strip() or None
+            bal = await INR_CREDIT_LEDGER.get_balance(api_key=eff_key)
+            payload = (
+                {"found": True, **bal}
+                if bal
+                else {
+                    "found": False,
+                    "credits_remaining": 0,
+                    "packs": list(INR_CREDIT_PACKS.values()),
+                    "topup_url": f"{clean_base}/api/v1/inr/topup",
+                    "hint": "Call `buy_ringscout_inr_credits` to generate a ₹19 / ₹49 / ₹99 UPI payment link.",
+                }
+            )
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "content": [{"type": "text", "text": json.dumps(payload, indent=2)}],
+                    "isError": False,
+                },
+            }
+
         if tool_name in ("scout_places_on_google_maps", "scout_india_local_businesses"):
             eff_payment_sig = payment_sig_header or args.get("x402_payment_signature")
             eff_stripe_tok = stripe_token_header or args.get("stripe_payment_token")
+            eff_api_key = (
+                api_key_header or str(args.get("api_key") or "").strip() or None
+            )
             eff_sandbox = sandbox_header or (
                 "simulate"
                 if (
@@ -2021,6 +2326,7 @@ async def handle_mcp_jsonrpc(
                     and not eff_payment_sig
                     and not auth_header
                     and not eff_stripe_tok
+                    and not eff_api_key
                     and get_payment_gate_mode() == "required"
                 )
                 else None
@@ -2040,6 +2346,7 @@ async def handle_mcp_jsonrpc(
                 user_agent=user_agent,
                 execution_mode=mcp_exec_mode,
                 github_username=mcp_gh_user,
+                api_key=eff_api_key,
             )
             if settlement is None:
                 _, challenge_body = build_402_challenge(
@@ -2288,6 +2595,11 @@ def build_openapi_actions_spec(base_url: str) -> dict[str, Any]:
                                             "default": "",
                                             "description": "Optional GitHub username that starred https://github.com/manavaga/ringscout.",
                                         },
+                                        "api_key": {
+                                            "type": "string",
+                                            "default": "",
+                                            "description": "Optional prepaid India INR UPI RingScout API key (`rk_...`).",
+                                        },
                                         "max_shops": {
                                             "type": "integer",
                                             "minimum": 1,
@@ -2343,6 +2655,81 @@ def build_openapi_actions_spec(base_url: str) -> dict[str, Any]:
                                 }
                             },
                         },
+                    },
+                }
+            },
+            "/api/v1/inr/topup": {
+                "post": {
+                    "operationId": "buyRingScoutInrCredits",
+                    "summary": "Generate an instant India INR UPI payment link (₹19 / ₹49 / ₹99) for prepaid RingScout calls",
+                    "x-openai-isConsequential": True,
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "pack_id": {
+                                            "type": "string",
+                                            "enum": ["starter_19", "pro_49", "scale_99", "agent_499"],
+                                            "default": "pro_49",
+                                        },
+                                        "existing_api_key": {"type": "string", "default": ""},
+                                        "github_username": {"type": "string", "default": ""},
+                                        "customer_name": {"type": "string", "default": ""},
+                                        "customer_email": {"type": "string", "default": ""},
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Razorpay INR UPI payment link and caller API key.",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "order_id": {"type": "string"},
+                                            "amount_inr": {"type": "integer"},
+                                            "credits": {"type": "integer"},
+                                            "upi_payment_url": {"type": "string"},
+                                            "api_key": {"type": "string"},
+                                            "instructions": {"type": "string"},
+                                        },
+                                    }
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+            "/api/v1/inr/credits": {
+                "get": {
+                    "operationId": "checkRingScoutInrCredits",
+                    "summary": "Check remaining prepaid INR call credits for an authenticated RingScout API key (`rk_...`)",
+                    "x-openai-isConsequential": False,
+                    "parameters": [
+                        {"name": "api_key", "in": "query", "required": True, "schema": {"type": "string"}},
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "Prepaid INR credit balance.",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "found": {"type": "boolean"},
+                                            "credits_remaining": {"type": "integer"},
+                                            "total_paid_inr": {"type": "integer"},
+                                        },
+                                    }
+                                }
+                            },
+                        }
                     },
                 }
             },
@@ -2441,7 +2828,7 @@ def build_mcp_server_card(base_url: str, live_pstn_ready: bool = True) -> dict[s
         "authentication": {
             "required": pay_state["gate_mode"] == "required",
             "mode": pay_state["gate_mode"],
-            "schemes": ["none", "stripe-mpp", "x402-eip3009"],
+            "schemes": ["none", "razorpay-inr-upi", "x402-eip3009", "stripe-mpp"],
         },
         "capabilities": {
             "tools": {"listChanged": False},

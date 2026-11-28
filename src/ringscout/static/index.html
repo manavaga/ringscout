@@ -629,10 +629,85 @@
       height: 34px;
     }
 
+    .upi-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 8, 12, 0.78);
+      backdrop-filter: blur(8px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 90;
+    }
+    .upi-modal-backdrop.open { display: flex; }
+    .upi-modal {
+      width: 100%;
+      max-width: 540px;
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: 14px;
+      padding: 22px 24px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+    }
+    .upi-packs-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin: 14px 0;
+    }
+    .upi-pack-btn {
+      text-align: left;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 13px;
+      color: var(--ink);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .upi-pack-btn:hover { border-color: var(--border-strong); }
+    .upi-pack-btn.selected {
+      border-color: var(--accent);
+      background: rgba(16, 185, 129, 0.08);
+    }
+    .upi-pack-price {
+      font-family: var(--mono);
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .upi-pack-meta {
+      font-size: 0.78rem;
+      color: var(--ink-muted);
+      margin-top: 3px;
+    }
+    .upi-input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 9px 11px;
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 0.8rem;
+    }
+    .upi-result-box {
+      margin-top: 14px;
+      padding: 13px;
+      border-radius: 10px;
+      background: var(--bg);
+      border: 1px solid var(--border-strong);
+      font-size: 0.82rem;
+      display: none;
+    }
+    .upi-result-box.visible { display: block; }
+
     @media (max-width: 640px) {
       .topbar-inner { height: auto; padding: 12px 16px; flex-wrap: wrap; }
       .controls-bar { flex-direction: column; align-items: stretch; }
       .btn-primary { width: 100%; }
+      .upi-packs-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -652,6 +727,7 @@
       <nav class="nav-links">
         <a href="/dashboard" class="nav-link">Live Dashboard</a>
         <a href="/developers" class="nav-link">MCP &amp; Agents</a>
+        <button type="button" id="openUpiModalBtn" class="nav-link" style="cursor:pointer;color:#fbbf24;border:1px solid rgba(251,191,36,0.32);background:rgba(251,191,36,0.08);font-family:inherit;">⚡ Buy INR Credits (UPI)</button>
         <a href="https://github.com/manavaga/ringscout" target="_blank" rel="noopener" class="nav-link" style="color:var(--accent);border:1px solid rgba(16,185,129,0.28);background:var(--accent-soft);">&#9733; Star on GitHub</a>
         <a href="/admin" class="nav-link">Admin</a>
       </nav>
@@ -776,6 +852,48 @@
       <a href="/privacy" style="color:var(--ink-muted);text-decoration:underline;">Privacy Policy</a>
     </footer>
   </main>
+
+  <div class="upi-modal-backdrop" id="upiModal" role="dialog" aria-modal="true" aria-labelledby="upiModalTitle">
+    <div class="upi-modal">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+        <div>
+          <h2 id="upiModalTitle" style="margin:0;font-size:1.15rem;">⚡ Buy RingScout INR Credits (UPI)</h2>
+          <p id="upiBalanceLine" style="margin:4px 0 0;font-size:0.8rem;color:var(--ink-muted);">Instant Razorpay UPI (GPay, PhonePe, Paytm, BHIM) — zero Stripe or card required.</p>
+        </div>
+        <button type="button" id="closeUpiModalBtn" style="background:transparent;border:1px solid var(--border);color:var(--ink-muted);border-radius:8px;padding:4px 10px;cursor:pointer;">✕</button>
+      </div>
+
+      <div class="upi-packs-grid">
+        <button type="button" class="upi-pack-btn" data-pack="starter_19">
+          <div class="upi-pack-price">₹19</div>
+          <div class="upi-pack-meta">10 live +91 calls · ₹1.90/call</div>
+        </button>
+        <button type="button" class="upi-pack-btn selected" data-pack="pro_49">
+          <div class="upi-pack-price">₹49 <span style="font-size:0.68rem;background:rgba(16,185,129,0.2);padding:2px 6px;border-radius:99px;vertical-align:middle;">POPULAR</span></div>
+          <div class="upi-pack-meta">30 live +91 calls · ₹1.63/call</div>
+        </button>
+        <button type="button" class="upi-pack-btn" data-pack="scale_99">
+          <div class="upi-pack-price">₹99</div>
+          <div class="upi-pack-meta">75 live +91 calls · ₹1.32/call</div>
+        </button>
+        <button type="button" class="upi-pack-btn" data-pack="agent_499">
+          <div class="upi-pack-price">₹499</div>
+          <div class="upi-pack-meta">400 live +91 calls · ₹1.25/call</div>
+        </button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:8px;">
+        <input id="upiExistingKey" class="upi-input" placeholder="Optional existing rk_... API key to top up" />
+        <button type="button" id="checkUpiBalBtn" style="background:var(--surface-2);border:1px solid var(--border);color:var(--ink);border-radius:8px;padding:0 12px;font-size:0.78rem;cursor:pointer;">Check Balance</button>
+      </div>
+      <div style="margin-bottom:12px;">
+        <input id="upiGhUser" class="upi-input" placeholder="Optional GitHub handle (receipt metadata only)" />
+      </div>
+
+      <button type="button" id="createUpiLinkBtn" class="btn btn-call" style="width:100%;justify-content:center;padding:11px 16px;font-size:0.9rem;">Generate UPI Payment Link &rarr;</button>
+      <div class="upi-result-box" id="upiResultBox"></div>
+    </div>
+  </div>
 
   <script>
     const EXAMPLES = {
@@ -1381,6 +1499,122 @@
     });
 
     init();
+
+    // --- India INR / UPI Prepaid Credits Modal ---
+    let selectedInrPack = 'pro_49';
+    const upiModal = document.getElementById('upiModal');
+    const upiResultBox = document.getElementById('upiResultBox');
+    const upiApiKeyInput = document.getElementById('upiExistingKey');
+    const savedRk = localStorage.getItem('ringscout_api_key') || '';
+    if (savedRk && upiApiKeyInput) upiApiKeyInput.value = savedRk;
+
+    function openUpiModal() {
+      upiModal.classList.add('open');
+      refreshUpiBalance();
+    }
+    function closeUpiModal() {
+      upiModal.classList.remove('open');
+    }
+    async function refreshUpiBalance() {
+      const k = (upiApiKeyInput.value || '').trim();
+      const balEl = document.getElementById('upiBalanceLine');
+      if (!k) {
+        balEl.textContent = 'Works across ChatGPT, Claude, Gemini, Cursor, MCP & REST API.';
+        return;
+      }
+      try {
+        const r = await fetch(`/api/v1/inr/credits?api_key=${encodeURIComponent(k)}`);
+        const d = await r.json();
+        if (d.found) {
+          balEl.textContent = `Active balance: ${d.credits_remaining} live +91 calls remaining (₹${d.total_paid_inr} total paid).`;
+        } else {
+          balEl.textContent = 'No paid credits on this key yet — select a pack below to top up via UPI.';
+        }
+      } catch (_e) {}
+    }
+
+    document.getElementById('openUpiModalBtn').addEventListener('click', openUpiModal);
+    document.getElementById('closeUpiModalBtn').addEventListener('click', closeUpiModal);
+    upiModal.addEventListener('click', (e) => { if (e.target === upiModal) closeUpiModal(); });
+
+    document.querySelectorAll('.upi-pack-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.upi-pack-btn').forEach((b) => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        selectedInrPack = btn.dataset.pack;
+      });
+    });
+
+    document.getElementById('checkUpiBalBtn').addEventListener('click', () => {
+      const k = (upiApiKeyInput.value || '').trim();
+      if (k) localStorage.setItem('ringscout_api_key', k);
+      refreshUpiBalance();
+    });
+
+    document.getElementById('createUpiLinkBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('createUpiLinkBtn');
+      btn.disabled = true;
+      btn.textContent = 'Creating Razorpay UPI Link...';
+      upiResultBox.classList.add('visible');
+      upiResultBox.innerHTML = '<span style="color:var(--ink-muted);">Generating dynamic INR UPI link...</span>';
+      try {
+        const res = await fetch('/api/v1/inr/topup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pack_id: selectedInrPack,
+            existing_api_key: (upiApiKeyInput.value || '').trim(),
+            github_username: (document.getElementById('upiGhUser').value || '').trim(),
+          }),
+        });
+        const data = await res.json();
+        upiResultBox.textContent = '';
+        if (!res.ok) {
+          const errEl = document.createElement('div');
+          errEl.style.color = '#f87171';
+          errEl.textContent = data.detail || 'UPI link unavailable right now';
+          upiResultBox.appendChild(errEl);
+        } else {
+          localStorage.setItem('ringscout_api_key', data.api_key);
+          upiApiKeyInput.value = data.api_key;
+          const okEl = document.createElement('div');
+          okEl.style.cssText = 'color:var(--accent);font-weight:700;margin-bottom:8px;';
+          okEl.textContent = `✓ UPI Link Ready — ₹${Number(data.amount_inr)} for ${Number(data.credits)} live calls (${data.mode} mode)`;
+          upiResultBox.appendChild(okEl);
+
+          const keyWrap = document.createElement('div');
+          keyWrap.style.marginBottom = '10px';
+          const lbl = document.createElement('strong');
+          lbl.textContent = 'Your API Key (save this):';
+          keyWrap.appendChild(lbl);
+          keyWrap.appendChild(document.createElement('br'));
+          const codeEl = document.createElement('code');
+          codeEl.style.cssText = 'color:var(--cyan);word-break:break-all;';
+          codeEl.textContent = data.api_key;
+          keyWrap.appendChild(codeEl);
+          upiResultBox.appendChild(keyWrap);
+
+          if (typeof data.upi_payment_url === 'string' && /^https?:\/\//i.test(data.upi_payment_url)) {
+            const payA = document.createElement('a');
+            payA.href = data.upi_payment_url;
+            payA.target = '_blank';
+            payA.rel = 'noopener';
+            payA.style.cssText = 'display:inline-block;background:var(--accent);color:#04100b;font-weight:700;padding:9px 14px;border-radius:8px;text-decoration:none;';
+            payA.textContent = `Pay ₹${Number(data.amount_inr)} via GPay / PhonePe / UPI →`;
+            upiResultBox.appendChild(payA);
+          }
+        }
+      } catch (err) {
+        upiResultBox.textContent = '';
+        const errEl = document.createElement('div');
+        errEl.style.color = '#f87171';
+        errEl.textContent = `Network error: ${String(err)}`;
+        upiResultBox.appendChild(errEl);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Generate UPI Payment Link →';
+      }
+    });
   </script>
 </body>
 </html>

@@ -339,6 +339,33 @@ Categories: hotel, restaurant, clinic,
       </div>
     </section>
 
+    <!-- India INR UPI + Always-402 $0.05 x402 Payment Rails -->
+    <section class="grid-3" style="grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));margin-bottom:28px;">
+      <div class="card">
+        <h3>🇮🇳 India INR / UPI Credits (Razorpay)</h3>
+        <p>Pay in Rupees with GPay, PhonePe, Paytm, or BHIM — zero Stripe account required. Packs start at <strong>₹19 (10 calls)</strong> and issue an instant <code>X-RingScout-Key</code> (<code>rk_...</code>).</p>
+        <div class="url-copy-box">
+          <code id="inrTopupUrl">https://.../api/v1/inr/topup</code>
+          <button class="copy-btn" data-copy="inrTopupUrl">Copy</button>
+        </div>
+        <pre class="snippet">MCP tools: buy_ringscout_inr_credits, check_ringscout_credits
+Packs: ₹19 (10) · ₹49 (30) · ₹99 (75) · ₹499 (400)
+Header: X-RingScout-Key: rk_live_...</pre>
+      </div>
+
+      <div class="card">
+        <h3>⛓️ Always-402 x402 Micro-Rail ($0.05 USDC)</h3>
+        <p>Dedicated autonomous-wallet endpoint on <strong>Base Mainnet</strong> (<code>eip155:8453</code>) &amp; Base Sepolia. Always enforces HTTP <code>402 Payment Required</code> (<code>50000</code> atomic USDC) for <code>x402scan</code> &amp; agent wallets.</p>
+        <div class="url-copy-box">
+          <code id="x402MicroUrl">https://.../api/v1/x402/scout</code>
+          <button class="copy-btn" data-copy="x402MicroUrl">Copy</button>
+        </div>
+        <pre class="snippet">GET/HEAD /api/v1/x402/scout -> HTTP 402 ($0.05 USDC)
+POST /api/v1/x402/scout + PAYMENT-SIGNATURE -> 200 OK
+Discovery: /.well-known/x402</pre>
+      </div>
+    </section>
+
     <!-- Public GEO & Crawlable Discovery Manifests -->
     <section class="card">
       <h3 style="margin:0 0 6px;">🌐 AI Search, Registry &amp; GEO Discovery Endpoints</h3>
@@ -354,6 +381,8 @@ Categories: hotel, restaurant, clinic,
         <a class="disc-pill" href="/.well-known/agent-card.json" target="_blank">/.well-known/agent-card.json</a>
         <a class="disc-pill" href="/openapi-actions.json" target="_blank">/openapi-actions.json</a>
         <a class="disc-pill" href="/.well-known/x402" target="_blank">/.well-known/x402</a>
+        <a class="disc-pill" href="/api/v1/x402/scout" target="_blank">/api/v1/x402/scout (402)</a>
+        <a class="disc-pill" href="/api/v1/inr/packs" target="_blank">/api/v1/inr/packs</a>
       </div>
     </section>
   </main>
@@ -376,6 +405,8 @@ Categories: hotel, restaurant, clinic,
     document.getElementById('mcpUrlClaude').textContent = `${origin}/mcp`;
     document.getElementById('a2aCardUrl').textContent = `${origin}/.well-known/agent-card.json`;
     document.getElementById('openApiUrl').textContent = `${origin}/openapi-actions.json`;
+    document.getElementById('inrTopupUrl').textContent = `${origin}/api/v1/inr/topup`;
+    document.getElementById('x402MicroUrl').textContent = `${origin}/api/v1/x402/scout`;
     document.getElementById('claudeDesktopJson').textContent = JSON.stringify({
       mcpServers: {
         ringscout: { type: 'http', url: `${origin}/mcp` }

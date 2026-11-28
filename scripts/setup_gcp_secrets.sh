@@ -70,12 +70,21 @@ ensure_secret_preserving_existing "ringscout-hmac-secret" "${RINGSCOUT_HMAC_SECR
 if [[ -n "${STRIPE_SECRET_KEY:-}" ]]; then
   upsert_secret "ringscout-stripe-secret-key" "${STRIPE_SECRET_KEY}"
 fi
+if [[ -n "${RAZORPAY_KEY_ID:-}" ]]; then
+  upsert_secret "ringscout-razorpay-key-id" "${RAZORPAY_KEY_ID}"
+fi
+if [[ -n "${RAZORPAY_KEY_SECRET:-}" ]]; then
+  upsert_secret "ringscout-razorpay-key-secret" "${RAZORPAY_KEY_SECRET}"
+fi
+if [[ -n "${RAZORPAY_WEBHOOK_SECRET:-}" ]]; then
+  upsert_secret "ringscout-razorpay-webhook-secret" "${RAZORPAY_WEBHOOK_SECRET}"
+fi
 
 # Grant Cloud Run default compute service account read access to these secrets
 PROJECT_NUM="$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')"
 SA_EMAIL="${PROJECT_NUM}-compute@developer.gserviceaccount.com"
 
-for s in ringscout-vobiz-auth-id ringscout-vobiz-auth-token ringscout-vobiz-from-number ringscout-admin-passcode ringscout-hmac-secret; do
+for s in ringscout-vobiz-auth-id ringscout-vobiz-auth-token ringscout-vobiz-from-number ringscout-admin-passcode ringscout-hmac-secret ringscout-stripe-secret-key ringscout-razorpay-key-id ringscout-razorpay-key-secret ringscout-razorpay-webhook-secret; do
   if gcloud secrets describe "${s}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
     gcloud secrets add-iam-policy-binding "${s}" \
       --project="${PROJECT_ID}" \

@@ -28,13 +28,27 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --member="serviceAccount:${PROJECT_NUM}-compute@developer.gserviceaccount.com" \
   --role="roles/logging.viewer" \
   --quiet >/dev/null 2>&1 || true
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --member="serviceAccount:${PROJECT_NUM}-compute@developer.gserviceaccount.com" \
+  --role="roles/datastore.user" \
+  --quiet >/dev/null 2>&1 || true
 
 SECRETS_MOUNT="VOBIZ_AUTH_ID=ringscout-vobiz-auth-id:latest,VOBIZ_AUTH_TOKEN=ringscout-vobiz-auth-token:latest,VOBIZ_FROM_NUMBER=ringscout-vobiz-from-number:latest,RINGSCOUT_ADMIN_PASSCODE=ringscout-admin-passcode:latest,RINGSCOUT_HMAC_SECRET=ringscout-hmac-secret:latest"
+for pair in \
+  "RAZORPAY_KEY_ID:ringscout-razorpay-key-id" \
+  "RAZORPAY_KEY_SECRET:ringscout-razorpay-key-secret" \
+  "RAZORPAY_WEBHOOK_SECRET:ringscout-razorpay-webhook-secret"; do
+  env_k="${pair%%:*}"
+  sec_n="${pair##*:}"
+  enabled_ver="$(gcloud secrets versions list "${sec_n}" --project="${PROJECT_ID}" --filter='state=ENABLED' --limit=1 --format='value(name)' 2>/dev/null || true)"
+  if [[ -n "${enabled_ver}" ]]; then
+    SECRETS_MOUNT="${SECRETS_MOUNT},${env_k}=${sec_n}:latest"
+  fi
+done
 
-ENV_VARS="GCP_PROJECT_ID=${PROJECT_ID},GCP_LOCATION=${REGION},RINGSCOUT_USE_SECRET_MANAGER=1,RINGSCOUT_PUBLIC_CONSUMER_ACCESS=1,A2A_AUTO_LIVE_PSTN=1,RINGSCOUT_ALLOW_FREE_LIVE_PSTN=1,RINGSCOUT_STAR_GATE_MODE=after_first_call"
-if [[ -n "${X402_PAY_TO_ADDRESS:-}" ]]; then
-  ENV_VARS="${ENV_VARS},X402_PAY_TO_ADDRESS=${X402_PAY_TO_ADDRESS}"
-fi
+ENV_VARS="GCP_PROJECT_ID=${PROJECT_ID},GCP_LOCATION=${REGION},RINGSCOUT_USE_SECRET_MANAGER=1,RINGSCOUT_PUBLIC_CONSUMER_ACCESS=1,A2A_AUTO_LIVE_PSTN=1,RINGSCOUT_ALLOW_FREE_LIVE_PSTN=1,RINGSCOUT_STAR_GATE_MODE=after_first_call,X402_ENABLE_AUTO_SETTLE=1"
+X402_WALLET="${X402_PAY_TO_ADDRESS:-0xafa03d9F1267d977310be682e82A5338b97D22C2}"
+ENV_VARS="${ENV_VARS},X402_PAY_TO_ADDRESS=${X402_WALLET}"
 
 echo "==> Deploying '${SERVICE_NAME}' to Cloud Run (${PROJECT_ID} / ${REGION})..."
 gcloud run deploy "${SERVICE_NAME}" \

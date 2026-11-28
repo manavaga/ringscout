@@ -319,7 +319,9 @@ def build_stripe_mpp_challenge(
 
 
 def verify_mpp_challenge_binding(
-    challenge_obj: dict[str, Any], expected_resource_url: str | None = None
+    challenge_obj: dict[str, Any],
+    expected_resource_url: str | None = None,
+    min_amount_cents: int = SCOUT_PRICE_CENTS,
 ) -> tuple[bool, str]:
     """Verify HMAC signature, expiration, and resource/currency binding on an echoed MPP `challenge` object."""
     cid = str(challenge_obj.get("id") or "")
@@ -340,7 +342,7 @@ def verify_mpp_challenge_binding(
         req_obj = json.loads(_b64url_decode(req_b64).decode("utf-8"))
         if str(req_obj.get("currency") or "").lower() != "usd":
             return False, "MPP challenge request currency must be USD"
-        if int(req_obj.get("amount") or 0) < SCOUT_PRICE_CENTS:
+        if int(req_obj.get("amount") or 0) < min_amount_cents:
             return False, "MPP challenge request amount below required price"
         if expected_resource_url and req_obj.get("resource"):
             got_host = urlsplit(str(req_obj["resource"])).netloc.lower()
@@ -408,6 +410,7 @@ async def verify_stripe_agent_payment(
     stripe_token_header: str | None,
     owner_passcode_valid: bool,
     resource_url: str | None = None,
+    min_amount_cents: int = SCOUT_PRICE_CENTS,
 ) -> tuple[tuple[str, str, str | None, bool] | None, str]:
     """Verify Stripe `MPP` (`Authorization: Payment <b64url>`) or `X-Stripe-Payment-Token` (`spt_`/`pm_`/`pi_`).
 
@@ -436,7 +439,9 @@ async def verify_stripe_agent_payment(
             return None, "Invalid MPP Payment credential encoding (expected unpadded base64url JSON)"
 
         ch_obj = cred.get("challenge") or {}
-        ok_ch, ch_err = verify_mpp_challenge_binding(ch_obj, expected_resource_url=resource_url)
+        ok_ch, ch_err = verify_mpp_challenge_binding(
+            ch_obj, expected_resource_url=resource_url, min_amount_cents=min_amount_cents
+        )
         if not ok_ch:
             return None, ch_err
         challenge_verified = True
@@ -466,8 +471,8 @@ async def verify_stripe_agent_payment(
                     if str(pi.get("currency") or "").lower() != "usd":
                         return None, f"Stripe PaymentIntent currency '{pi.get('currency')}' must be 'usd'"
                     amt = int(pi.get("amount_received") or pi.get("amount") or 0)
-                    if amt < SCOUT_PRICE_CENTS:
-                        return None, f"Stripe PaymentIntent amount ({amt}c) below required {SCOUT_PRICE_CENTS}c"
+                    if amt < min_amount_cents:
+                        return None, f"Stripe PaymentIntent amount ({amt}c) below required {min_amount_cents}c"
                     return ("stripe-payment-intent-live", payer, str(pi["id"]), sk.startswith("sk_test_")), "ok"
 
                 # Charge Shared Payment Token (`spt_...`) or PaymentMethod (`pm_...`) via Stripe PaymentIntents API
@@ -475,7 +480,7 @@ async def verify_stripe_agent_payment(
                 if not _record_or_reject_stripe_replay(replay_key):
                     return None, "Stripe MPP payment credential has already been spent (replay blocked)"
                 form_data = {
-                    "amount": str(SCOUT_PRICE_CENTS),
+                    "amount": str(min_amount_cents),
                     "currency": "usd",
                     "payment_method": token,
                     "confirm": "true",

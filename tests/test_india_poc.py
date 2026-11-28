@@ -2757,3 +2757,376 @@ def test_openai_public_launch_disclosure_privacy_and_24h_ttl(
         assert "q_secret9999" not in ev["path"]
 
 
+def test_inr_upi_razorpay_credits_webhook_and_x402_micro_rail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify end-to-end India INR UPI (Razorpay Payment Links + HMAC webhook + callback) & Always-402 $0.05 x402 rail."""
+    import hashlib
+    import hmac
+    import httpx
+
+    from ringscout import inr_payments
+    from ringscout.inr_payments import INR_CREDIT_LEDGER, update_runtime_razorpay_config
+    from ringscout.models import PlaceCategory
+    from ringscout.stripe_protocol import update_runtime_payment_config
+
+    monkeypatch.setenv("RINGSCOUT_PASSCODE", "admin-pass-999")
+    monkeypatch.setenv("RINGSCOUT_PAYMENT_GATE_MODE", "off")
+    monkeypatch.setenv("X402_PAY_TO_ADDRESS", "0xafa03d9F1267d977310be682e82A5338b97D22C2")
+    INR_CREDIT_LEDGER.reset_for_tests()
+    update_runtime_payment_config(gate_mode="off", star_gate_mode="off")
+    update_runtime_razorpay_config(
+        key_id="rzp_test_RingScoutDemo123",
+        key_secret="rzp_test_secret_987654",
+        webhook_secret="whsec_razorpay_test_123",
+    )
+
+    async def fake_discover(req: DiscoverRequest) -> DiscoverResponse:
+        return DiscoverResponse(
+            query="restaurants open now",
+            place_category=PlaceCategory.RESTAURANT,
+            city="Mumbai",
+            locality="Bandra West",
+            source="vertex_google_maps_grounding",
+            shops=[
+                IndianShopTarget(
+                    shop_id="shop_1",
+                    name="Bastian Bandra",
+                    phone_e164="+912226402222",
+                    phone_display="+91 22 2640 2222",
+                    address="Linking Road, Bandra West, Mumbai 400050",
+                    locality="Bandra West",
+                    city="Mumbai",
+                    open_status="OPEN NOW",
+                    rating=4.6,
+                )
+            ],
+        )
+
+    monkeypatch.setattr(a2a_gateway, "discover_indian_shops", fake_discover)
+
+    captured_rzp_payloads: list[dict] = []
+
+    class _FakeRzpResp:
+        status_code = 200
+        text = '{"id":"plink_TestUpi001","short_url":"https://rzp.io/i/TestUpi001"}'
+
+        def json(self) -> dict:
+            return {"id": "plink_TestUpi001", "short_url": "https://rzp.io/i/TestUpi001"}
+
+    async def fake_async_post(self, url: str, **kwargs):  # type: ignore[no-untyped-def]
+        if "api.razorpay.com" in url:
+            captured_rzp_payloads.append(kwargs.get("json") or {})
+            return _FakeRzpResp()
+        raise AssertionError(f"Unexpected outbound POST to {url}")
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_async_post)
+
+    app = create_app(synthesize_audio=False, require_provenance=True)
+    client = TestClient(app)
+
+    try:
+        # 1. Discovery & Always-402 $0.05 x402 micro-rail probes (GET, HEAD, POST without payment)
+        disc_x402 = client.get("/.well-known/x402").json()
+        assert disc_x402["resources"][0]["url"].endswith("/api/v1/x402/scout")
+        assert disc_x402["resources"][0]["priceUsd"] == 0.05
+        assert disc_x402["resources"][0]["accepts"][0]["amount"] == "50000"
+        assert disc_x402["inrUpiTopup"]["startingAmountInr"] == 19
+
+        # HEAD on both /api/v1/scout and /api/v1/x402/scout must return 402 (never 405!)
+        assert client.head("/api/v1/scout").status_code == 402
+        assert client.head("/api/v1/x402/scout").status_code == 402
+        probe_micro = client.get("/api/v1/x402/scout")
+        assert probe_micro.status_code == 402
+        assert probe_micro.json()["accepts"][0]["amount"] == "50000"
+        assert probe_micro.json()["inr_upi"]["starting_pack_inr"] == 19
+
+        # POST /api/v1/x402/scout MUST enforce 402 even when gate_mode == "off"!
+        unpaid_micro = client.post(
+            "/api/v1/x402/scout",
+            json={
+                "place_category": "restaurant",
+                "item_question": "Table for 4 tonight",
+                "execution_mode": "swarm",
+                "max_shops": 1,
+            },
+        )
+        assert unpaid_micro.status_code == 402
+        assert unpaid_micro.json()["accepts"][0]["amount"] == "50000"
+
+        # 2. List INR packs & create UPI topup via REST + MCP tool
+        packs_resp = client.get("/api/v1/inr/packs").json()
+        assert packs_resp["configured"] is True
+        assert packs_resp["mode"] == "test"
+        assert len(packs_resp["packs"]) == 4
+
+        topup_resp = client.post(
+            "/api/v1/inr/topup",
+            json={"pack_id": "starter_19", "github_username": "indianbuilder"},
+        )
+        assert topup_resp.status_code == 200
+        topup = topup_resp.json()
+        assert topup["amount_inr"] == 19
+        assert topup["credits"] == 10
+        assert topup["upi_payment_url"] == "https://rzp.io/i/TestUpi001"
+        assert topup["api_key"].startswith("rk_test_")
+        assert captured_rzp_payloads[-1]["upi_link"] is True
+        assert captured_rzp_payloads[-1]["currency"] == "INR"
+        assert captured_rzp_payloads[-1]["amount"] == 1900
+
+        api_key = topup["api_key"]
+        order_id = topup["order_id"]
+
+        # Unpaid key must fail closed (402) and NOT fall back to free tier
+        pre_pay_call = client.post(
+            "/api/v1/scout",
+            headers={"X-RingScout-Key": api_key},
+            json={"place_category": "restaurant", "item_question": "Table tonight", "execution_mode": "swarm"},
+        )
+        assert pre_pay_call.status_code == 402
+
+        # 3. Razorpay Webhook HMAC verification: reject forged signature, reject underpaid, accept valid, block replay
+        webhook_obj = {
+            "event": "payment_link.paid",
+            "payload": {
+                "payment": {"entity": {"id": "pay_RzpUpi001", "amount": 1900, "currency": "INR"}},
+                "payment_link": {
+                    "entity": {
+                        "id": "plink_TestUpi001",
+                        "reference_id": order_id,
+                        "amount": 1900,
+                        "currency": "INR",
+                        "notes": captured_rzp_payloads[-1]["notes"],
+                    }
+                },
+            },
+        }
+        raw_wh = json.dumps(webhook_obj).encode("utf-8")
+        bad_wh = client.post(
+            "/api/payments/razorpay/webhook",
+            content=raw_wh,
+            headers={"X-Razorpay-Signature": "deadbeef", "Content-Type": "application/json"},
+        )
+        assert bad_wh.status_code == 401
+
+        # Underpaid event (100 paise instead of 1900 paise) must be rejected
+        underpaid_obj = json.loads(raw_wh.decode("utf-8"))
+        underpaid_obj["payload"]["payment"]["entity"]["amount"] = 100
+        underpaid_raw = json.dumps(underpaid_obj).encode("utf-8")
+        underpaid_sig = hmac.new(b"whsec_razorpay_test_123", underpaid_raw, hashlib.sha256).hexdigest()
+        underpaid_resp = client.post(
+            "/api/payments/razorpay/webhook",
+            content=underpaid_raw,
+            headers={"X-Razorpay-Signature": underpaid_sig, "Content-Type": "application/json"},
+        )
+        assert underpaid_resp.status_code == 200
+        assert underpaid_resp.json()["ok"] is False
+
+        # Valid HMAC webhook credits 10 calls
+        good_sig = hmac.new(b"whsec_razorpay_test_123", raw_wh, hashlib.sha256).hexdigest()
+        ok_wh = client.post(
+            "/api/payments/razorpay/webhook",
+            content=raw_wh,
+            headers={"X-Razorpay-Signature": good_sig, "Content-Type": "application/json"},
+        )
+        assert ok_wh.status_code == 200
+        assert ok_wh.json()["newly_credited"] is True
+        assert ok_wh.json()["credits_added"] == 10
+        assert ok_wh.json()["credits_remaining"] == 10
+
+        # Replay of identical webhook adds 0 credits!
+        replay_wh = client.post(
+            "/api/payments/razorpay/webhook",
+            content=raw_wh,
+            headers={"X-Razorpay-Signature": good_sig, "Content-Type": "application/json"},
+        )
+        assert replay_wh.status_code == 200
+        assert replay_wh.json()["newly_credited"] is False
+        assert replay_wh.json()["credits_added"] == 0
+        assert replay_wh.json()["credits_remaining"] == 10
+
+        # 4. Callback /payments/inr/success signature check (idempotent fast-path + HTML escaping)
+        cb_payload = f"plink_TestUpi001|{order_id}|paid|pay_RzpUpi001"
+        cb_sig = hmac.new(b"rzp_test_secret_987654", cb_payload.encode("utf-8"), hashlib.sha256).hexdigest()
+        cb_resp = client.get(
+            "/payments/inr/success",
+            params={
+                "razorpay_payment_id": "pay_RzpUpi001",
+                "razorpay_payment_link_id": "plink_TestUpi001",
+                "razorpay_payment_link_reference_id": order_id,
+                "razorpay_payment_link_status": "paid",
+                "razorpay_signature": cb_sig,
+            },
+        )
+        assert cb_resp.status_code == 200
+        assert "UPI Payment Verified" in cb_resp.text
+        assert "10 live +91 calls" in cb_resp.text
+
+        # 5. Deduct credits across /api/v1/x402/scout (X-RingScout-Key), Bearer rk_..., and MCP tools
+        paid_x402_via_inr = client.post(
+            "/api/v1/x402/scout",
+            headers={"X-RingScout-Key": api_key},
+            json={
+                "place_category": "restaurant",
+                "item_question": "Table for 4 tonight",
+                "execution_mode": "swarm",
+                "max_shops": 1,
+            },
+        )
+        assert paid_x402_via_inr.status_code == 200
+        assert paid_x402_via_inr.json()["settlement"]["rail"] == "razorpay-inr-upi-credits"
+        assert paid_x402_via_inr.json()["settlement"]["network"] == "razorpay:inr"
+
+        paid_bearer = client.post(
+            "/api/v1/x402/scout",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={
+                "place_category": "restaurant",
+                "item_question": "Table for 2 tonight",
+                "execution_mode": "swarm",
+                "max_shops": 1,
+            },
+        )
+        assert paid_bearer.status_code == 200
+
+        # Check balance via REST + MCP `check_ringscout_credits` + `buy_ringscout_inr_credits`
+        bal = client.get("/api/v1/inr/credits", headers={"X-RingScout-Key": api_key}).json()
+        assert bal["found"] is True
+        assert bal["credits_remaining"] == 8
+        assert bal["credits_used"] == 2
+        assert bal["github_username"] == "indianbuilder"
+
+        mcp_bal = client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 91,
+                "method": "tools/call",
+                "params": {"name": "check_ringscout_credits", "arguments": {"api_key": api_key}},
+            },
+        ).json()
+        assert mcp_bal["result"]["isError"] is False
+        assert json.loads(mcp_bal["result"]["content"][0]["text"])["credits_remaining"] == 8
+
+        mcp_buy = client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 92,
+                "method": "tools/call",
+                "params": {
+                    "name": "buy_ringscout_inr_credits",
+                    "arguments": {"pack_id": "pro_49", "existing_api_key": api_key},
+                },
+            },
+        ).json()
+        assert mcp_buy["result"]["isError"] is False
+        buy_json = json.loads(mcp_buy["result"]["content"][0]["text"])
+        assert buy_json["amount_inr"] == 49
+        assert buy_json["api_key"] == api_key
+        assert buy_json["is_new_key"] is False
+
+        # Verify every MCP tool still includes required `annotations`
+        tools_list = client.post(
+            "/mcp", json={"jsonrpc": "2.0", "id": 93, "method": "tools/list", "params": {}}
+        ).json()["result"]["tools"]
+        tool_names = {t["name"] for t in tools_list}
+        assert "buy_ringscout_inr_credits" in tool_names
+        assert "check_ringscout_credits" in tool_names
+        for t in tools_list:
+            assert isinstance(t.get("annotations"), dict)
+
+        # Exhaust remaining credits & verify 402 returned (no silent fallback)
+        khash = inr_payments.hash_api_key(api_key)
+        INR_CREDIT_LEDGER._accounts[khash]["credits_remaining"] = 0
+        exhausted = client.post(
+            "/api/v1/scout",
+            headers={"X-RingScout-Key": api_key},
+            json={"place_category": "restaurant", "item_question": "Table tonight", "execution_mode": "swarm"},
+        )
+        assert exhausted.status_code == 402
+        assert "exhausted" in exhausted.json()["error"].lower()
+
+        # 6. Judge P0/P1 Regressions:
+        # (a) Unauthenticated github_username cannot read balances
+        anon_gh_bal = client.get("/api/v1/inr/credits", params={"github_username": "indianbuilder"}).json()
+        assert anon_gh_bal["found"] is False
+
+        # (b) Zero/missing amount_paise in Razorpay webhook must be rejected (no free credits)
+        zero_obj = json.loads(raw_wh.decode("utf-8"))
+        zero_obj["payload"]["payment"]["entity"]["id"] = "pay_ZeroAmt99"
+        zero_obj["payload"]["payment"]["entity"]["amount"] = 0
+        zero_obj["payload"]["payment_link"]["entity"]["amount"] = 0
+        zero_raw = json.dumps(zero_obj).encode("utf-8")
+        zero_sig = hmac.new(b"whsec_razorpay_test_123", zero_raw, hashlib.sha256).hexdigest()
+        zero_resp = client.post(
+            "/api/payments/razorpay/webhook",
+            content=zero_raw,
+            headers={"X-Razorpay-Signature": zero_sig, "Content-Type": "application/json"},
+        )
+        assert zero_resp.status_code == 200
+        assert zero_resp.json()["ok"] is False
+
+        # (c) Dual order_id idempotency: different payment_id for same order_id adds 0 credits
+        dup_order_obj = json.loads(raw_wh.decode("utf-8"))
+        dup_order_obj["event"] = "payment.captured"
+        dup_order_obj["payload"]["payment"]["entity"]["id"] = "pay_DifferentIdSameOrder"
+        dup_order_raw = json.dumps(dup_order_obj).encode("utf-8")
+        dup_order_sig = hmac.new(b"whsec_razorpay_test_123", dup_order_raw, hashlib.sha256).hexdigest()
+        dup_order_resp = client.post(
+            "/api/payments/razorpay/webhook",
+            content=dup_order_raw,
+            headers={"X-Razorpay-Signature": dup_order_sig, "Content-Type": "application/json"},
+        )
+        assert dup_order_resp.status_code == 200
+        assert dup_order_resp.json()["newly_credited"] is False
+        assert dup_order_resp.json()["credits_added"] == 0
+
+        # (d) Callback with mismatched plink_id must NOT verify
+        bad_cb_payload = f"plink_Wrong999|{order_id}|paid|pay_RzpUpi001"
+        bad_cb_sig = hmac.new(b"rzp_test_secret_987654", bad_cb_payload.encode("utf-8"), hashlib.sha256).hexdigest()
+        bad_cb_resp = client.get(
+            "/payments/inr/success",
+            params={
+                "razorpay_payment_id": "pay_RzpUpi001",
+                "razorpay_payment_link_id": "plink_Wrong999",
+                "razorpay_payment_link_reference_id": order_id,
+                "razorpay_payment_link_status": "paid",
+                "razorpay_signature": bad_cb_sig,
+            },
+        )
+        assert "UPI Payment Verified" not in bad_cb_resp.text
+
+        # (e) Mode isolation: test server rejects topping up rk_live_ key; live server rejects rk_test_ key
+        live_topup_on_test = client.post(
+            "/api/v1/inr/topup",
+            json={"pack_id": "starter_19", "existing_api_key": "rk_live_abcdefghijklmnopqrstuv"},
+        )
+        assert live_topup_on_test.status_code == 400
+
+        INR_CREDIT_LEDGER._accounts[khash]["credits_remaining"] = 5
+        update_runtime_razorpay_config(key_id="rzp_live_ProdKey123456")
+        test_key_on_live = client.post(
+            "/api/v1/x402/scout",
+            headers={"X-RingScout-Key": api_key},
+            json={"place_category": "restaurant", "item_question": "Table tonight", "execution_mode": "swarm"},
+        )
+        assert test_key_on_live.status_code == 402
+        assert "rk_test_" in test_key_on_live.json()["error"]
+
+        # (f) MPP WWW-Authenticate challenge on /api/v1/x402/scout encodes 5 cents ($0.05) + secrets_manager map
+        from ringscout.secrets_manager import SECRET_NAME_MAP
+        from ringscout.stripe_protocol import _b64url_decode
+
+        mpp_req_decoded = json.loads(_b64url_decode(probe_micro.json()["mpp"]["request"]).decode("utf-8"))
+        assert mpp_req_decoded["amount"] == "5"
+        assert "RAZORPAY_KEY_ID" in SECRET_NAME_MAP
+        assert "RAZORPAY_KEY_SECRET" in SECRET_NAME_MAP
+        assert "RAZORPAY_WEBHOOK_SECRET" in SECRET_NAME_MAP
+    finally:
+        INR_CREDIT_LEDGER.reset_for_tests()
+        update_runtime_razorpay_config(key_id="", key_secret="", webhook_secret="")
+        update_runtime_payment_config(gate_mode="off", star_gate_mode="off")
+
+
+

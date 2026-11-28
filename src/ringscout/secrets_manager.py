@@ -24,6 +24,9 @@ SECRET_NAME_MAP: dict[str, str] = {
     "RINGSCOUT_ADMIN_PASSCODE": "ringscout-admin-passcode",
     "RINGSCOUT_HMAC_SECRET": "ringscout-hmac-secret",
     "STRIPE_SECRET_KEY": "ringscout-stripe-secret-key",
+    "RAZORPAY_KEY_ID": "ringscout-razorpay-key-id",
+    "RAZORPAY_KEY_SECRET": "ringscout-razorpay-key-secret",
+    "RAZORPAY_WEBHOOK_SECRET": "ringscout-razorpay-webhook-secret",
 }
 
 
