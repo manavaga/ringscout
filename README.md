@@ -95,6 +95,15 @@ curl -X POST https://ringscout-hom7ntreuq-uc.a.run.app/a2a \
 | **Agent-to-Agent** | Google / Linux Foundation **A2A v1.0** | `/.well-known/agent-card.json` · `POST /a2a` |
 | **Domain AI Catalog** | `SEP-2127` AI Catalog + `agents.json` + OpenAPI `3.1` | `/.well-known/ai-catalog.json` · `/openapi-actions.json` |
 | **AI Search & Trust** | `llms.txt` + Privacy & Call Disclosure Policy | `/llms.txt` · `/privacy` · `/ping` |
+| **India INR / UPI Credits** | Razorpay Payment Links (GPay, PhonePe, Paytm, BHIM) | `POST /api/v1/inr/topup` · `GET /api/v1/inr/packs` · `GET /api/v1/inr/credits` |
+| **Always-402 Crypto Micro-Rail** | `x402` v2 Base Mainnet / Sepolia USDC (`$0.05` = `50000`) | `POST /api/v1/x402/scout` · `/.well-known/x402` |
+
+### Agentic Payments (India INR UPI + `$0.05` Base USDC x402)
+
+- **Free Tier & GitHub Star-Gate:** Try **1 live call free**, then star this repo and pass `github_username` for **5 free live calls/day**.
+- **India INR / UPI Prepaid Packs (zero Stripe required):** Click **⚡ Buy INR Credits (UPI)** on the web app, call MCP tool `buy_ringscout_inr_credits`, or `POST /api/v1/inr/topup` for `₹19` (10 calls), `₹49` (30 calls), `₹99` (75 calls), or `₹499` (400 calls). Pass your key via `X-RingScout-Key: rk_...` or MCP `api_key`.
+- **Autonomous Crypto Wallets (`x402` v2):** `POST /api/v1/x402/scout` always returns HTTP `402 Payment Required` (`$0.05` USDC on Base Mainnet `eip155:8453`) and settles EIP-3009 signatures automatically.
+- **Runnable Buyer Agent Demo:** `python3 examples/buyer_agent_demo.py` (supports `--buy-inr starter_19`, `RINGSCOUT_API_KEY=rk_...`, and `--live`).
 
 ---
 

@@ -326,6 +326,11 @@ class A2AScoutRequest(BaseModel):
         max_length=60,
         description="Optional GitHub handle that starred https://github.com/manavaga/ringscout to unlock free live calls.",
     )
+    api_key: str = Field(
+        default="",
+        max_length=128,
+        description="Optional prepaid INR UPI RingScout API key (`rk_live_...` / `rk_test_...`) from POST /api/v1/inr/topup.",
+    )
     item_question: str = Field(
         ...,
         min_length=3,

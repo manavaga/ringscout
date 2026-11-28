@@ -13,6 +13,7 @@ from collections import Counter, OrderedDict, defaultdict, deque
 import datetime
 import hashlib
 import hmac
+import html
 import json
 import logging
 import os
@@ -33,6 +34,8 @@ from ringscout.a2a_gateway import (
     A2A_TASK_STORE,
     BASE_SEPOLIA_CAIP2_NETWORK,
     PaymentRequiredError,
+    X402_MICRO_ATOMIC_USDC,
+    X402_MICRO_PRICE_USD,
     build_402_challenge,
     build_agent_card,
     build_agents_json_manifest,
@@ -69,6 +72,16 @@ from ringscout.cloud_run_bridge import (
 )
 from ringscout.google_lookup import discover_indian_shops, normalize_indian_phone
 from ringscout.india_locations import INDIA_CITY_AREAS
+from ringscout.inr_payments import (
+    INR_CREDIT_LEDGER,
+    INR_CREDIT_PACKS,
+    create_razorpay_upi_topup,
+    get_effective_razorpay_credentials,
+    masked_razorpay_status,
+    process_razorpay_webhook_event,
+    update_runtime_razorpay_config,
+    verify_razorpay_callback_signature,
+)
 from ringscout.models import (
     A2AScoutRequest,
     CallMode,
@@ -231,6 +244,18 @@ class PaymentConfigUpdateRequest(BaseModel):
     global_daily_free_pstn_legs: int | None = Field(default=None, ge=1, le=2000)
     stripe_secret_key: str | None = Field(default=None)
     stripe_checkout_url: str | None = Field(default=None)
+    razorpay_key_id: str | None = Field(default=None)
+    razorpay_key_secret: str | None = Field(default=None)
+    razorpay_webhook_secret: str | None = Field(default=None)
+
+
+class InrTopupRequest(BaseModel):
+    pack_id: str = Field(default="pro_49", max_length=32)
+    existing_api_key: str = Field(default="", max_length=128)
+    github_username: str = Field(default="", max_length=60)
+    customer_name: str = Field(default="", max_length=60)
+    customer_email: str = Field(default="", max_length=80)
+    customer_phone: str = Field(default="", max_length=24)
 
 
 class TrafficAnalyticsTracker:
@@ -277,7 +302,13 @@ class TrafficAnalyticsTracker:
         elif path == "/a2a" and request.method == "POST":
             proto_label = "Google A2A Task Call (POST /a2a)"
         elif path == "/api/v1/scout" and request.method == "POST":
-            proto_label = "OpenAPI / x402 / Stripe Scout (POST /api/v1/scout)"
+            proto_label = "OpenAPI / x402 / INR / Stripe Scout (POST /api/v1/scout)"
+        elif path == "/api/v1/x402/scout":
+            proto_label = f"x402 Always-402 $0.05 Micro-Rail ({request.method} /api/v1/x402/scout)"
+        elif path == "/api/v1/inr/topup" and request.method == "POST":
+            proto_label = "India INR UPI Topup Created (POST /api/v1/inr/topup)"
+        elif path == "/api/payments/razorpay/webhook" and request.method == "POST":
+            proto_label = "Razorpay INR UPI Webhook"
         elif path == "/openapi-actions.json":
             proto_label = "ChatGPT Actions Schema Fetch (/openapi-actions.json)"
         elif path in ("/.well-known/agent-card.json", "/.well-known/agent.json"):
@@ -656,7 +687,7 @@ def _build_llms_txt(base_url: str, full: bool = False) -> str:
 - [Official Google A2A v1.0 Agent Card]({clean}/.well-known/agent-card.json): JSON-RPC 2.0 `message/send` endpoint at `{clean}/a2a`.
 - [Open-Source GitHub Repository](https://github.com/manavaga/ringscout): Source code, `server.json`, MCP setup, and MIT license (star to unlock bonus free live calls).
 - [Privacy & AI Call Disclosure Policy]({clean}/privacy): Data handling and Google Maps business provenance policy for ChatGPT Actions, Claude, and Gemini connectors.
-- [Payment Protocols (Phase A Open + Phase B Stripe MPP & x402)]({clean}/api/v1/pricing): Works out-of-the-box with zero payment wall in Phase A; supports Stripe Machine Payments Protocol (`WWW-Authenticate: Payment` / Shared Payment Tokens `spt_...`) and `x402` v2 Base USDC (`0.75 USDC`) in Phase B.
+- [Payment Protocols (Free Tier + India INR UPI + $0.05 x402 Base USDC)]({clean}/api/v1/pricing): 1 free call + 5 free calls/day for GitHub stargazers; instant India INR UPI prepaid packs starting at ₹19 (10 calls) via `{clean}/api/v1/inr/topup` or MCP `buy_ringscout_inr_credits`; plus dedicated always-402 `$0.05` USDC on Base endpoint at `{clean}/api/v1/x402/scout`.
 """
     if not full:
         return core
@@ -1199,6 +1230,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
             "cloud_run_bridge_active": is_bridge_enabled(),
             "payment_gate_mode": pay_status["gate_mode"],
             "stripe_mode": pay_status["stripe_mode"],
+            "razorpay_inr": masked_razorpay_status(),
             "retention_policy": {
                 "call_audio_and_transcripts_ttl_seconds": int(manager.retention_ttl_seconds),
                 "operational_logs_retention_days": OPERATIONAL_LOG_RETENTION_DAYS,
@@ -1259,7 +1291,9 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
 
     @app.get("/api/admin/payment-config", dependencies=[Depends(verify_admin_passcode)])
     async def get_admin_payment_config() -> dict[str, Any]:
-        return masked_payment_status()
+        out = masked_payment_status()
+        out["razorpay_inr"] = masked_razorpay_status()
+        return out
 
     @app.post("/api/admin/payment-config", dependencies=[Depends(verify_admin_passcode)])
     async def set_admin_payment_config(req: PaymentConfigUpdateRequest) -> dict[str, Any]:
@@ -1273,7 +1307,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
                 status_code=400,
                 detail="star_gate_mode must be 'off', 'after_first_call', or 'strict'.",
             )
-        return update_runtime_payment_config(
+        out = update_runtime_payment_config(
             gate_mode=req.gate_mode,
             star_gate_mode=req.star_gate_mode,
             free_daily_calls_per_client=req.free_daily_calls_per_client,
@@ -1281,6 +1315,18 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
             stripe_secret_key=req.stripe_secret_key,
             stripe_checkout_url=req.stripe_checkout_url,
         )
+        if (
+            req.razorpay_key_id is not None
+            or req.razorpay_key_secret is not None
+            or req.razorpay_webhook_secret is not None
+        ):
+            update_runtime_razorpay_config(
+                key_id=req.razorpay_key_id,
+                key_secret=req.razorpay_key_secret,
+                webhook_secret=req.razorpay_webhook_secret,
+            )
+        out["razorpay_inr"] = masked_razorpay_status()
+        return out
 
     @app.get("/api/admin/analytics", dependencies=[Depends(verify_admin_passcode)])
     async def get_admin_analytics() -> dict[str, Any]:
@@ -1907,11 +1953,274 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
         base_url = _derive_public_base_url(request, manager.pstn_adapter)
         _, challenge_body = build_402_challenge(f"{base_url}/api/v1/scout")
         challenge_body["paymentStatus"] = masked_payment_status()
+        challenge_body["razorpayInr"] = masked_razorpay_status()
+        challenge_body["x402MicroEndpoint"] = {
+            "url": f"{base_url}/api/v1/x402/scout",
+            "priceUsd": X402_MICRO_PRICE_USD,
+            "atomicUsdc": X402_MICRO_ATOMIC_USDC,
+        }
         return challenge_body
 
-    @app.get("/api/v1/scout")
+    # --- India INR / UPI Prepaid Credits (Razorpay Payment Links + HMAC Webhook) ---
+
+    @app.get("/api/v1/inr/packs")
+    async def list_inr_credit_packs(request: Request) -> dict[str, Any]:
+        base_url = _derive_public_base_url(request, manager.pstn_adapter).rstrip("/")
+        status = masked_razorpay_status()
+        return {
+            "currency": "INR",
+            "provider": "razorpay",
+            "configured": status["configured"],
+            "mode": status["mode"],
+            "upi_enabled": True,
+            "topup_url": f"{base_url}/api/v1/inr/topup",
+            "credits_url": f"{base_url}/api/v1/inr/credits",
+            "packs": list(INR_CREDIT_PACKS.values()),
+        }
+
+    @app.post("/api/v1/inr/topup")
+    async def create_inr_upi_topup_endpoint(
+        req: InrTopupRequest, request: Request
+    ) -> dict[str, Any]:
+        base_url = _derive_public_base_url(request, manager.pstn_adapter).rstrip("/")
+        existing_key = (
+            req.existing_api_key.strip()
+            or (request.headers.get("x-ringscout-key") or "").strip()
+            or None
+        )
+        try:
+            return await create_razorpay_upi_topup(
+                pack_id=req.pack_id,
+                base_url=base_url,
+                existing_api_key=existing_key,
+                github_username=req.github_username or (request.headers.get("x-github-username") or ""),
+                customer_name=req.customer_name,
+                customer_email=req.customer_email,
+                customer_phone=req.customer_phone,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            msg = str(exc)
+            status_code = 503 if "RAZORPAY_NOT_CONFIGURED" in msg else 502
+            raise HTTPException(status_code=status_code, detail=msg) from exc
+
+    @app.get("/api/v1/inr/credits")
+    async def get_inr_credits_balance(
+        request: Request,
+        api_key: str | None = None,
+    ) -> dict[str, Any]:
+        base_url = _derive_public_base_url(request, manager.pstn_adapter).rstrip("/")
+        eff_key = (api_key or request.headers.get("x-ringscout-key") or "").strip() or None
+        if not eff_key:
+            auth_h = (request.headers.get("authorization") or "").strip()
+            if auth_h.lower().startswith("bearer ") and auth_h[7:].strip().startswith("rk_"):
+                eff_key = auth_h[7:].strip()
+        try:
+            bal = await INR_CREDIT_LEDGER.get_balance(api_key=eff_key)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"Credit ledger unavailable: {exc}") from exc
+        if not bal:
+            return {
+                "found": False,
+                "credits_remaining": 0,
+                "total_paid_inr": 0,
+                "topup_url": f"{base_url}/api/v1/inr/topup",
+                "packs": list(INR_CREDIT_PACKS.values()),
+            }
+        return {"found": True, **bal}
+
+    @app.post("/api/payments/razorpay/webhook", include_in_schema=False)
+    async def razorpay_inr_webhook(request: Request) -> JSONResponse:
+        """Verify `X-Razorpay-Signature` HMAC-SHA256 over raw body and idempotently credit INR calls."""
+        raw_body = await request.body()
+        sig_hdr = request.headers.get("x-razorpay-signature")
+        try:
+            result = await process_razorpay_webhook_event(raw_body, sig_hdr)
+            return JSONResponse(status_code=200, content=result)
+        except PermissionError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except (ValueError, json.JSONDecodeError) as exc:
+            logger.warning("Razorpay webhook malformed payload: %s", exc)
+            raise HTTPException(status_code=400, detail="Malformed Razorpay webhook payload") from exc
+        except Exception as exc:
+            logger.warning("Razorpay webhook transient error (503 retry): %s", exc)
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.get("/payments/inr/success", include_in_schema=False)
+    async def razorpay_inr_success_page(request: Request) -> HTMLResponse:
+        """Verify Razorpay redirect callback signature (idempotent fast-path) and show confirmation receipt."""
+        qp = request.query_params
+        payment_id = (qp.get("razorpay_payment_id") or "").strip()
+        plink_id = (qp.get("razorpay_payment_link_id") or "").strip()
+        ref_id = (qp.get("razorpay_payment_link_reference_id") or qp.get("order_id") or "").strip()
+        plink_status = (qp.get("razorpay_payment_link_status") or "").strip().lower()
+        sig = (qp.get("razorpay_signature") or "").strip()
+
+        verified = False
+        credits_now: int | None = None
+        amount_inr: int | None = None
+        key_masked = "rk_••••"
+        _kid, key_secret, _wsec = get_effective_razorpay_credentials()
+
+        if plink_status == "paid" and verify_razorpay_callback_signature(
+            payment_link_id=plink_id,
+            payment_link_reference_id=ref_id,
+            payment_link_status=plink_status,
+            payment_id=payment_id,
+            signature=sig,
+            key_secret=key_secret,
+        ):
+            try:
+                order = await INR_CREDIT_LEDGER.get_order_async(ref_id)
+                expected_plink = str((order or {}).get("plink_id") or "")
+                if (
+                    order
+                    and order.get("key_hash")
+                    and (not expected_plink or expected_plink == plink_id)
+                ):
+                    pack = INR_CREDIT_PACKS.get(str(order.get("pack_id") or ""))
+                    if pack:
+                        c_qty = int(pack["credits"])
+                        a_inr = int(pack["amount_inr"])
+                        _, acc = await INR_CREDIT_LEDGER.credit_payment(
+                            payment_id=payment_id,
+                            key_hash=str(order["key_hash"]),
+                            credits=c_qty,
+                            amount_inr=a_inr,
+                            key_masked=str(order.get("key_masked") or "rk_••••"),
+                            github_username=str(order.get("github_username") or ""),
+                            order_id=ref_id,
+                            pack_id=str(pack["pack_id"]),
+                        )
+                        verified = True
+                        credits_now = int(acc.get("credits_remaining", 0))
+                        amount_inr = a_inr
+                        key_masked = str(acc.get("key_masked") or order.get("key_masked") or "rk_••••")
+            except Exception as exc:
+                logger.warning("Razorpay callback activation deferred to webhook (%s): %s", ref_id, exc)
+
+        safe_pid = html.escape(payment_id or "pending")
+        safe_ref = html.escape(ref_id or "—")
+        safe_key = html.escape(key_masked)
+        badge_bg = "#10b981" if verified else "#f59e0b"
+        badge_txt = "UPI Payment Verified & Credits Active" if verified else "Awaiting Razorpay Confirmation"
+        credits_line = (
+            f"<p><strong>Active Balance:</strong> {credits_now} live +91 calls (₹{amount_inr} paid)</p>"
+            if credits_now is not None
+            else "<p>Your credits activate automatically as soon as Razorpay confirms the UPI settlement.</p>"
+        )
+        page_html = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RingScout INR UPI Payment Receipt</title>
+  <style>
+    body {{ background:#090c10; color:#f1f5f9; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; margin:0; padding:44px 20px; }}
+    main {{ max-width:580px; margin:0 auto; background:#11161d; border:1px solid rgba(255,255,255,0.1); border-radius:16px; padding:32px; }}
+    .badge {{ display:inline-block; padding:6px 12px; border-radius:999px; font-size:0.82rem; font-weight:700; color:#04100b; background:{badge_bg}; margin-bottom:16px; }}
+    code {{ background:#0b1220; border:1px solid rgba(255,255,255,0.12); padding:3px 8px; border-radius:6px; color:#38bdf8; }}
+    a.btn {{ display:inline-block; margin-top:18px; background:#10b981; color:#04100b; font-weight:700; text-decoration:none; padding:11px 18px; border-radius:10px; }}
+    p {{ color:#cbd5e1; line-height:1.6; }}
+  </style>
+</head>
+<body>
+  <main>
+    <div class="badge">{badge_txt}</div>
+    <h1 style="margin:0 0 12px;font-size:1.45rem;">RingScout India UPI Receipt</h1>
+    {credits_line}
+    <p><strong>Payment ID:</strong> <code>{safe_pid}</code> &middot; <strong>Order:</strong> <code>{safe_ref}</code></p>
+    <p><strong>API Key:</strong> <code>{safe_key}</code> (use the full key shown when you generated the UPI link via <code>X-RingScout-Key</code> header or MCP <code>api_key</code>).</p>
+    <a class="btn" href="/">Back to RingScout &rarr;</a>
+  </main>
+</body>
+</html>"""
+        return HTMLResponse(content=page_html)
+
+    # --- Dedicated Always-402 x402 v2 Micro-Payment Rail ($0.05 USDC on Base OR INR UPI Key) ---
+
+    @app.api_route("/api/v1/x402/scout", methods=["GET", "HEAD"])
+    async def x402_micro_scout_probe(request: Request) -> Response:
+        """Always-402 probe for `x402scan`, `402explorer` (`paygent.network`), and autonomous USDC agents ($0.05)."""
+        base_url = _derive_public_base_url(request, manager.pstn_adapter)
+        hdrs, body = build_402_challenge(
+            f"{base_url}/api/v1/x402/scout",
+            price_usd=X402_MICRO_PRICE_USD,
+            atomic_usdc=X402_MICRO_ATOMIC_USDC,
+        )
+        return JSONResponse(status_code=402, content=body, headers=hdrs)
+
+    @app.post("/api/v1/x402/scout")
+    async def x402_micro_paid_scout_endpoint(
+        req: A2AScoutRequest, request: Request
+    ) -> Response:
+        """Dedicated always-paid `$0.05` Base USDC (x402 v2) / Prepaid INR UPI voice scout endpoint."""
+        base_url = _derive_public_base_url(request, manager.pstn_adapter)
+        resource_url = f"{base_url}/api/v1/x402/scout"
+        provided_pass = request.headers.get("x-ringscout-passcode") or request.query_params.get(
+            "passcode"
+        )
+        pass_ok = _check_admin_passcode_value(provided_pass)
+        pay_sig = request.headers.get("payment-signature") or request.headers.get("x-payment")
+        api_key = request.headers.get("x-ringscout-key") or req.api_key or None
+        settlement, reason = await verify_a2a_payment(
+            resource_url=resource_url,
+            payment_sig_header=pay_sig,
+            auth_header=request.headers.get("authorization"),
+            sandbox_header=request.headers.get("x-sandbox-payment"),
+            ap2_mandate=req.ap2_mandate,
+            ap2_header_raw=request.headers.get("x-ap2-mandate"),
+            owner_passcode_valid=pass_ok,
+            stripe_token_header=request.headers.get("x-stripe-payment-token"),
+            client_fingerprint=_client_fingerprint(request),
+            user_agent=request.headers.get("user-agent"),
+            execution_mode=req.execution_mode,
+            github_username=request.headers.get("x-github-username") or req.github_username or None,
+            api_key=api_key,
+            force_paid=True,
+            min_atomic_usdc=X402_MICRO_ATOMIC_USDC,
+            charge_usd=X402_MICRO_PRICE_USD,
+        )
+        if settlement is None:
+            hdrs, body = build_402_challenge(
+                resource_url,
+                detail=reason,
+                price_usd=X402_MICRO_PRICE_USD,
+                atomic_usdc=X402_MICRO_ATOMIC_USDC,
+            )
+            return JSONResponse(status_code=402, content=body, headers=hdrs)
+
+        try:
+            result = await execute_a2a_scout(
+                req=req,
+                manager=manager,
+                base_url=base_url,
+                public_wss_ready=_is_publicly_reachable_base(base_url) or is_bridge_enabled(),
+                settlement=settlement,
+                owner_passcode_valid=pass_ok,
+                origin_channel="x402_micro",
+                caller_agent="x402 Autonomous Buyer Agent",
+            )
+            return JSONResponse(
+                status_code=200,
+                content=result,
+                headers=build_payment_response_headers(settlement),
+            )
+        except PaymentRequiredError as pay_exc:
+            hdrs, body = build_402_challenge(
+                resource_url,
+                detail=str(pay_exc),
+                price_usd=X402_MICRO_PRICE_USD,
+                atomic_usdc=X402_MICRO_ATOMIC_USDC,
+            )
+            return JSONResponse(status_code=402, content=body, headers=hdrs)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.api_route("/api/v1/scout", methods=["GET", "HEAD"])
     async def x402_scout_crawler_probe(request: Request) -> Response:
-        """Allow `x402scan`, Stripe MPP & Bazaar crawlers probing `GET /api/v1/scout` to inspect 402 terms."""
+        """Allow `x402scan`, Stripe MPP & Bazaar crawlers probing `GET/HEAD /api/v1/scout` to inspect 402 terms."""
         base_url = _derive_public_base_url(request, manager.pstn_adapter)
         hdrs, body = build_402_challenge(f"{base_url}/api/v1/scout")
         return JSONResponse(status_code=402, content=body, headers=hdrs)
@@ -1942,6 +2251,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
             user_agent=request.headers.get("user-agent"),
             execution_mode=req.execution_mode,
             github_username=request.headers.get("x-github-username") or req.github_username or None,
+            api_key=request.headers.get("x-ringscout-key") or req.api_key or None,
         )
         if settlement is None:
             hdrs, body = build_402_challenge(resource_url, detail=reason)
@@ -2011,6 +2321,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
             client_fingerprint=_client_fingerprint(request),
             user_agent=request.headers.get("user-agent"),
             github_username_header=request.headers.get("x-github-username"),
+            api_key_header=request.headers.get("x-ringscout-key"),
         )
         return JSONResponse(status_code=status_code, content=resp_body, headers=resp_hdrs)
 
@@ -2121,6 +2432,7 @@ def create_app(synthesize_audio: bool = True, require_provenance: bool = True) -
             client_fingerprint=_client_fingerprint(request),
             user_agent=request.headers.get("user-agent"),
             github_username_header=request.headers.get("x-github-username"),
+            api_key_header=request.headers.get("x-ringscout-key"),
             out_headers=mcp_headers,
             incoming_session_id=incoming_sid,
         )

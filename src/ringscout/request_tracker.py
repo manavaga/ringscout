@@ -141,7 +141,18 @@ def classify_endpoint_category(path: str) -> str:
         return "discovery_well_known"
     if path in ("/a2a", "/.well-known/agent-card.json", "/.well-known/agent.json"):
         return "a2a_protocol"
-    if path in ("/.well-known/x402", "/api/v1/x402/discovery", "/api/v1/scout", "/api/v1/pricing"):
+    if path in (
+        "/.well-known/x402",
+        "/api/v1/x402/discovery",
+        "/api/v1/x402/scout",
+        "/api/v1/scout",
+        "/api/v1/pricing",
+        "/api/v1/inr/packs",
+        "/api/v1/inr/topup",
+        "/api/v1/inr/credits",
+        "/api/payments/razorpay/webhook",
+        "/payments/inr/success",
+    ):
         return "agentic_payments"
     if path in ("/llms.txt", "/llms-full.txt", "/.well-known/llms.txt", "/robots.txt", "/sitemap.xml"):
         return "geo_ai_search"
